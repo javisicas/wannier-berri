@@ -253,6 +253,46 @@ class DerSpin(Matrix_GenDer_ln):
 ########################
 #   orbital moment     #
 ########################
+class Morb_formula_sipe(Formula_ln):
+    def __init__(self, data_K, **parameters):
+        super().__init__(data_K, **parameters)
+        if self.external_terms:
+            self.A = data_K.Xbar('AA')
+            self.dA = data_K.Xbar('AA', commader = 1) # commader or gender ?
+            self.B = data_K.Xbar('BB')
+            self.C = data_K.Xbar('CC')
+            self.W = data_K.Xbar('UU') 
+        self.D = data_K.Dcov
+        self.E = data_K.E_K
+        self.ndim = 1
+        self.transformTR=transform_odd
+        self.transformInv=transform_ident
+
+        #patterns:
+        #for s, a, b in (+1, alpha_A, beta_A), (-1, beta_A, alpha_A):
+
+    def nn(self, ik, inn, out): # internal terms (the sum is over occupied states)
+        summ = np.zeros((len(inn), len(inn), 3), dtype=complex)
+    
+        #Term 1.1
+        for s, a, b in (+1, alpha_A, beta_A), (-1, beta_A, alpha_A):   
+            summ += s * self.E[ik][inn][:, None]  * '',self.dA.nn(ik, inn, out)[:, :, a, b]
+        #Term 1.2
+        for s, a, b in (+1, alpha_A, beta_A), (-1, beta_A, alpha_A):   
+            tmp = s * self.AA.nl(ik, inn, out)[:,:, a] * self.AA.ln(ik, inn, out)[:, :, b]
+            # E[ik][:] is both inn and out states?
+            summ += 0.5 * np.einsum('m,nm,mn -> nn', self.E[ik][:][None, :] * (tmp - tmp.swapaxes(0, 1).conj()))
+        #Term 2
+        # for s, a, b in (+1, alpha_A, beta_A), (-1, beta_A, alpha_A):   
+        #     tmp = 
+        #     summ += 0.5  * 
+        # D are the UdeltaU D_H Dcov ? wang eq 25
+        
+        return summ
+    
+    @property
+    def additive(self):
+        return False
 
 class Morb_H(Formula_ln):
 
@@ -260,9 +300,12 @@ class Morb_H(Formula_ln):
         r"""  :math:`\varepcilon_{abc} \langle \partial_a u | H | \partial_b \rangle` """
         super().__init__(data_K, **parameters)
         if self.external_terms:
-            self.A = data_K.covariant('AA')
-            self.B = data_K.covariant('BB')
-            self.C = data_K.covariant('CC')
+            # self.A = data_K.covariant('AA') # data_K.covariant calls Xbar -> A(k) in Hamiltonian gauge
+            # self.B = data_K.covariant('BB')
+            # self.C = data_K.covariant('CC')
+            self.A = data_K.Xbar('AA') # data_K.covariant calls Xbar -> A(k) in Hamiltonian gauge
+            self.B = data_K.Xbar('BB')
+            self.C = data_K.Xbar('CC')
         self.D = data_K.Dcov
         self.E = data_K.E_K
         self.ndim = 1
@@ -280,6 +323,7 @@ class Morb_H(Formula_ln):
 
         if self.external_terms:
             summ += 0.5 * self.C.nn(ik, inn, out)
+            # the -1 and +1 bellow are the levicivitas together with alpha_A and beta_A
             summ += -1 * np.einsum(
                 "mlc,lnc->mnc",
                 self.D.nl(ik, inn, out)[:, :, alpha_A],
@@ -335,6 +379,8 @@ class morb(Morb_Hpm):
 
     def __init__(self, data_K, **parameters):
         super().__init__(data_K, sign=-1, **parameters)
+
+
 
 
 ########################

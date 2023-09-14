@@ -187,24 +187,42 @@ class Spin(StaticCalculator):
         super().__init__(**kwargs)
 
 
+# class Morb(StaticCalculator):
+#     r"""Orbital magnetic moment per unit cell (:math:`\mu_B`)
+
+#         | Eq(1) in `Ref <https://journals.aps.org/prb/abstract/10.1103/PhysRevB.85.014435>`__
+#         | Output: :math:`M = -\int [dk] (H + G - 2E_f \cdot \Omega) f`"""
+
+#     def __init__(self, constant_factor=-factors.eV_au / factors.bohr**2, **kwargs):
+#         self.Formula = frml.Morb_Hpm
+#         self.fder = 0
+#         super().__init__(constant_factor=constant_factor, **kwargs)
+#         self.AHC = AHC(constant_factor=constant_factor, print_comment=False, **kwargs)
+
+#     def __call__(self, data_K):
+#         Hplus_res = super().__call__(data_K)
+#         Omega_res = self.AHC(data_K).mul_array(self.Efermi)
+#         return (Hplus_res - 2 * Omega_res) * data_K.cell_volume
+
 class Morb(StaticCalculator):
     r"""Orbital magnetic moment per unit cell (:math:`\mu_B`)
 
         | Eq(1) in `Ref <https://journals.aps.org/prb/abstract/10.1103/PhysRevB.85.014435>`__
         | Output: :math:`M = -\int [dk] (H + G - 2E_f \cdot \Omega) f`"""
 
-    def __init__(self, constant_factor=-factors.eV_au / factors.bohr**2, **kwargs):
-        self.Formula = frml.Morb_Hpm
-        self.fder = 0
+    def __init__(self, constant_factor = factors.eV_au / factors.bohr**2, **kwargs):
+        self.Formula = frml.Morb_formula_sipe
+        self.fder = 0 # formula weighted by the 0th derivative of Fermi distribution
         super().__init__(constant_factor=constant_factor, **kwargs)
-        self.AHC = AHC(constant_factor=constant_factor, print_comment=False, **kwargs)
 
-    def __call__(self, data_K):
-        Hplus_res = super().__call__(data_K)
-        Omega_res = self.AHC(data_K).mul_array(self.Efermi)
-        return (Hplus_res - 2 * Omega_res) * data_K.cell_volume
+class Morb_sipe(StaticCalculator):
+#factors.elementary_charge/(2 * factors.c *  factors.hbar)
+    def __init__(self, constant_factor = factors.eV_au / factors.bohr**2, **kwargs):
+        self.Formula = frml.Morb_formula_sipe
+        self.fder = 0 # formula weighted by the 0th derivative of Fermi distribution
+        super().__init__(constant_factor=constant_factor, **kwargs)
 
-
+    
 class Morb_test(StaticCalculator):
 
     def __init__(self, constant_factor=-factors.eV_au / factors.bohr**2, **kwargs):
