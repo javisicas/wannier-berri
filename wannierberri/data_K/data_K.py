@@ -23,6 +23,7 @@ from .. import formula
 from ..grid import KpointBZparallel, KpointBZtetra
 from ..symmetry.point_symmetry import transform_ident, transform_odd
 from .sdct_K import SDCT_K
+from .q2_K import Q2_K
 
 
 def _rotate_matrix(X):
@@ -350,3 +351,8 @@ class Data_K(System, abc.ABC):
 
 
 #########################################################################################################################################
+
+    @cached_property
+    def Q2(self):
+        """returns the Q2 term"""
+        return Q2_K(self)
