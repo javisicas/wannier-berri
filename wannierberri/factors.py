@@ -43,3 +43,7 @@ fac_spin_hall = factor_ahc * -0.5
 # (stepan) I removed the 1j factor for shift current and took the -Im part of I_mn
 factor_shift_current = hbar / elementary_charge * pi * elementary_charge ** 3 / (4 * hbar ** 2)
 factor_injection_current = - pi * elementary_charge ** 3 / (hbar ** 2) * TAU_UNIT
+
+############################3
+
+factor_cell_volume_to_m = (10e10)**3

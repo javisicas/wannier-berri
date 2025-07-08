@@ -1,7 +1,7 @@
 import numpy as np
 from ..utility import alpha_A, beta_A
 from ..formula import Formula
-from ..symmetry.point_symmetry import transform_ident, transform_odd
+from ..symmetry.point_symmetry import transform_ident, transform_ident
 from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
 from .. import factors as factors
 from .calculator import MultitermCalculator
@@ -31,7 +31,7 @@ class test(DynamicCalculator):
         self.kwargs_formula.update()
         self.Formula = test_Formula
         self.transformTR = transform_ident
-        self.transformInv = transform_odd
+        self.transformInv = transform_ident
         self.constant_factor =  factors.factor_cell_volume_to_m        
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
@@ -386,7 +386,7 @@ class Beta_2_formula(Formula):
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1/3 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmni, knmlj -> knmijl', O, dA)
-        summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmla, kpnb, kmpj -> knmijl', dA, A, A)
+        summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmla, kpnb, kmpj, iab -> knmijl', dA, A, A, lev)
         self.Imn = np.real(summ)
         self.ndim = 3
 
@@ -604,7 +604,7 @@ class Pi_1_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += 1/6 * elementary_charge * np.einsum('kmnjlk, knmi -> knmijlk', O_P, A)
+        summ += 1/6 * elementary_charge * np.einsum('qmnjlk, qnmi -> qnmijlk', O_P, A)
 
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
@@ -643,8 +643,9 @@ class Pi_2_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/12 * elementary_charge**2 * np.einsum('kmj, kml, knmi -> knmijlk', dE, dE, A)
-        summ += -1/12 * elementary_charge**2 * np.einsum('knj, knl, knmi -> knmijlk', dE, dE, A)
+        # manual: added k index to dE, i guess it is fine after symmetrization
+        summ += -1/12 * elementary_charge**2 * np.einsum('qmjk, qmlk, qnmi -> qnmijlk', dE[:,:,:,None], dE[:,:,:,None], A)
+        summ += -1/12 * elementary_charge**2 * np.einsum('qnjk, qnlk, qnmi -> qnmijlk', dE[:,:,:,None], dE[:,:,:,None], A)
 
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
@@ -683,12 +684,12 @@ class Pi_3_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += 1/24 * elementary_charge**2 * np.einsum('kmj, kmnkl, knmi -> knmijlk', dE, dA, A)
-        summ += -1/24 * elementary_charge**2 * np.einsum('knj, kmnkl, knmi -> knmijlk', dE, dA, A)
-        summ += 1/24 * elementary_charge**2 * np.einsum('kmlj, knmi, kmnk -> knmijlk', ddE, A, A)
-        summ += -1/24 * elementary_charge**2 * np.einsum('knlj, knmi, kmnk -> knmijlk', ddE, A, A)
-        summ += 1/12 * elementary_charge * 1j * np.einsum('kmj, kmnlk, knmi -> knmijlk', dE, Q_P, A)
-        summ += 1/12 * elementary_charge * 1j * np.einsum('knj, kmnlk, knmi -> knmijlk', dE, Q_P, A)
+        summ += 1/24 * elementary_charge**2 * np.einsum('qmj, qmnkl, qnmi -> qnmijlk', dE, dA, A)
+        summ += -1/24 * elementary_charge**2 * np.einsum('qnj, qmnkl, qnmi -> qnmijlk', dE, dA, A)
+        summ += 1/24 * elementary_charge**2 * np.einsum('qmlj, qnmi, qmnk -> qnmijlk', ddE, A, A)
+        summ += -1/24 * elementary_charge**2 * np.einsum('qnlj, qnmi, qmnk -> qnmijlk', ddE, A, A)
+        summ += 1/12 * elementary_charge * 1j * np.einsum('qmj, qmnlk, qnmi -> qnmijlk', dE, Q_P, A)
+        summ += 1/12 * elementary_charge * 1j * np.einsum('qnj, qmnlk, qnmi -> qnmijlk', dE, Q_P, A)
 
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
@@ -732,11 +733,11 @@ class Sigma_1_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijl, qmnk -> qijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjik, qmnl -> qijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjil, qmnk -> qijlk', ddA, A)
-        summ += 1 * np.einsum('qnmij, qmnkl -> qijlk', Q_P, Q_P)
+        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qnmijlk', ddA, A)
+        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijl, qmnk -> qnmijlk', ddA, A)
+        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjik, qmnl -> qnmijlk', ddA, A)
+        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjil, qmnk -> qnmijlk', ddA, A)
+        summ += 1 * np.einsum('qnmij, qmnkl -> qnmijlk', Q_P, Q_P)
 
         self.Imn = summ
         self.ndim = 4
@@ -767,10 +768,10 @@ class Sigma_2_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('qmk, qnmij, qmnl -> qijlk', dE, Q_P, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('qnk, qnmij, qmnl -> qijlk', dE, Q_P, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('qml, qnmij, qmnk -> qijlk', dE, Q_P, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('qnl, qnmij, qmnk -> qijlk', dE, Q_P, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('qmk, qnmij, qmnl -> qnmijlk', dE, Q_P, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('qnk, qnmij, qmnl -> qnmijlk', dE, Q_P, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('qml, qnmij, qmnk -> qnmijlk', dE, Q_P, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('qnl, qnmij, qmnk -> qnmijlk', dE, Q_P, A)
 
         self.Imn = summ
         self.ndim = 4
@@ -805,12 +806,12 @@ class Capital_Gamma_1_formula(Formula):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kma, knmij, kmnb, lab -> kijl', dE, Q_P, A, lev)
-        summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kna, knmij, kmnb, lab -> kijl', dE, Q_P, A, lev)
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kma, knmij, kmnb, lab -> knmijl', dE, Q_P, A, lev)
+        summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kna, knmij, kmnb, lab -> knmijl', dE, Q_P, A, lev)
 
         self.Imn = summ
-        self.ndim = 4
+        self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
@@ -837,12 +838,12 @@ class Capital_Gamma_2_formula(Formula):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmija, kmnb, lab -> kijl', ddA, A, lev)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmjia, kmnb, lab -> kijl', ddA, A, lev)
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmija, kmnb, lab -> knmijl', ddA, A, lev)
+        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmjia, kmnb, lab -> knmijl', ddA, A, lev)
 
         self.Imn = summ
-        self.ndim = 4
+        self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
@@ -869,11 +870,11 @@ class Capital_Gamma_3_formula(Formula):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += 1 * np.einsum('kmnl, knmij -> kijl', M, Q_P)
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1 * np.einsum('kmnl, knmij -> knmijl', M, Q_P)
 
         self.Imn = summ
-        self.ndim = 4
+        self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
@@ -900,13 +901,13 @@ class Capital_Gamma_4_formula(Formula):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knml, kmnij -> kijl', O, dA)
-        summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knml, kmnji -> kijl', O, dA)
-        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knmij, knml -> kijl', Q_P, O)
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knml, kmnij -> knmijl', O, dA)
+        summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knml, kmnji -> knmijl', O, dA)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knmij, knml -> knmijl', Q_P, O)
 
         self.Imn = np.real(summ)
-        self.ndim = 4
+        self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
@@ -933,13 +934,13 @@ class Capital_Gamma_4(DynamicCalculator):
 ##############################################################
 
 
-class Omega_formula(Formula):
+class Omega_formula_1(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += 1 * elementary_charge * np.einsum('qnmijl, qmnk -> qijlk', O_P, A)
+        summ += 1 * elementary_charge * np.einsum('qnmijl, qmnk -> qnmijlk', O_P, A)
 
         self.Imn = summ
         self.ndim = 4
@@ -948,11 +949,11 @@ class Omega_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Omega(DynamicCalculator):
+class Omega_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Omega_formula
+        self.Formula = Omega_formula_1
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
