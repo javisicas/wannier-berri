@@ -1,7 +1,7 @@
 import numpy as np
 from ..utility import alpha_A, beta_A
 from ..formula import Formula
-from ..symmetry.point_symmetry import transform_ident, transform_ident
+from ..symmetry.point_symmetry import transform_ident, transform_odd
 from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
 from .. import factors as factors
 from .calculator import MultitermCalculator
