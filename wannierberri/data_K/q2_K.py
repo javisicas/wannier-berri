@@ -14,8 +14,7 @@ class Q2_K:
         self.dEnm_threshold = 1e-3
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
-        self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann))
-                         - np.eye(self.data_K.num_wann)[None,:,:])
+        self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
 
     @cached_property
     def levicivita(self):
@@ -131,14 +130,15 @@ class Q2_K:
         dE = self.dE
         A = self.A_H
         lev = self.levicivita
+        anti_kron = self.anti_kron
         try:
             S = self.data_K.Xbar('SS') * hbar/2         
         except:
             S = np.zeros(V.shape)
 
         summ = np.zeros((V.shape), dtype=complex) # kmnl
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('kmpa, kpnb, lab -> kmnl', A, V, lev)
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('kpna, kmpb, lab -> kmnl', A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> kmnl', S)
@@ -150,14 +150,15 @@ class Q2_K:
         dE = self.dE
         A = self.A_H_internal
         lev = self.levicivita
+        anti_kron = self.anti_kron
         try:
             S = self.data_K.Xbar('SS') * hbar/2         
         except:
             S = np.zeros(V.shape)
 
         summ = np.zeros((V.shape), dtype=complex) # kmnl
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('kmpa, kpnb, lab -> kmnl', A, V, lev)
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('kpna, kmpb, lab -> kmnl', A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> kmnl', S)
@@ -166,17 +167,19 @@ class Q2_K:
     @cached_property
     def electric_quadrupole(self):
         A = self.A_H
+        anti_kron = self.anti_kron
 
-        Q_P = elementary_charge/4 * (np.einsum('kmlj, klni -> kmnji', A, A)
-                                   + np.einsum('kmli, klnj -> kmnji', A, A))
+        Q_P = elementary_charge/4 * (np.einsum('kmpj, kpni, kmp, knp -> kmnji', A, A, anti_kron, anti_kron)
+                                   + np.einsum('kmpi, kpnj, kmp, knp -> kmnji', A, A, anti_kron, anti_kron))
         return Q_P
 
     @cached_property
     def electric_quadrupole_internal(self):
         A = self.A_H_internal
+        anti_kron = self.anti_kron
 
-        Q_P = elementary_charge/4 * (np.einsum('kmlj, klni -> kmnji', A, A)
-                                   + np.einsum('kmli, klnj -> kmnji', A, A))
+        Q_P = elementary_charge/4 * (np.einsum('kmpj, kpni, kmp, knp -> kmnji', A, A, anti_kron, anti_kron)
+                                   + np.einsum('kmpi, kpnj, kmp, knp -> kmnji', A, A, anti_kron, anti_kron))
         return Q_P
 
     @cached_property
@@ -187,28 +190,28 @@ class Q2_K:
         dE = self.dE
         ddE = self.ddE
         lev = self.levicivita
+        anti_kron = self.anti_kron
         try:
             S = self.S
         except:
             S = np.zeros(V.shape)
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, knlb, iab -> knmij', dA, V, lev)
-        summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klmb, iab -> knmij', dA, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klsa, knlj, ksmb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('knsa, klmj, kslb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('ksla, klmj, knsb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('ksma, knlj, klsb, iab -> knmij', A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, ksla, klmj, knsb, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, A, V, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, klsa, knlj, ksmb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, ksma, knlj, klsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knb, knmja, iab -> knmij', dE, dA, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmaj, knmb, iab -> knmij', ddE, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knaj, knmb, iab -> knmij', ddE, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klma, knlj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, knla, klmj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klma, knlj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, knla, klmj, iab -> knmij', dE, A, A, lev)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, knlj -> knmij', S, A)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klmj -> knmij', S, A)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
         return summ
 
     @cached_property
@@ -219,28 +222,28 @@ class Q2_K:
         dE = self.dE
         ddE = self.ddE
         lev = self.levicivita
+        anti_kron = self.anti_kron
         try:
             S = self.S         
         except:
             S = np.zeros(V.shape)
         
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, knlb, iab -> knmij', dA, V, lev)
-        summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klmb, iab -> knmij', dA, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klsa, knlj, ksmb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('knsa, klmj, kslb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('ksla, klmj, knsb, iab -> knmij', A, A, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('ksma, knlj, klsb, iab -> knmij', A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, ksla, klmj, knsb, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, A, V, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, klsa, knlj, ksmb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, ksma, knlj, klsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knb, knmja, iab -> knmij', dE, dA, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmaj, knmb, iab -> knmij', ddE, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knaj, knmb, iab -> knmij', ddE, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klma, knlj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, knla, klmj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klma, knlj, iab -> knmij', dE, A, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, knla, klmj, iab -> knmij', dE, A, A, lev)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, knlj -> knmij', S, A)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klmj -> knmij', S, A)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
         return summ
 
     @cached_property
@@ -248,14 +251,13 @@ class Q2_K:
         A = self.A_H
         dA = self.gender_A_H
         ddA = self.gender2_A_H
+        anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += np.einsum('qnpk, qpsj, qsml -> qmnjlk', A, A, A)
-        summ += +1j/2 * np.einsum('qnsk, qsmlj -> qmnjlk', A, dA)
-        summ += -1j/2 * np.einsum('qnskj, qsml -> qmnjlk', dA, A)
-        summ += -np.einsum('qmnklj -> qmnjlk', ddA)
-        summ *= elementary_charge / 36
-
+        summ += -1/36 * elementary_charge * np.einsum('qmnklj -> qnmjlk', ddA)
+        summ += -1/72 * elementary_charge * 1j * np.einsum('qmsjl, qns, qsm, qsnk -> qnmjlk', dA, anti_kron, anti_kron, A)
+        summ += 1/72 * elementary_charge * 1j * np.einsum('qsnkl, qns, qsm, qmsj -> qnmjlk', dA, anti_kron, anti_kron, A)
+        summ += 1/36 * elementary_charge * np.einsum('qmp, qps, qsn, qmpj, qsnk, qpsl -> qnmjlk', anti_kron, anti_kron, anti_kron, A, A, A)
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
         ljk = summ.swapaxes(-2,-3)
@@ -269,14 +271,13 @@ class Q2_K:
         A = self.A_H_internal
         dA = self.gender_A_H_internal
         ddA = self.gender2_A_H_internal
+        anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += np.einsum('qnpk, qpsj, qsml -> qmnjlk', A, A, A)
-        summ += +1j/2 * np.einsum('qnsk, qsmlj -> qmnjlk', A, dA)
-        summ += -1j/2 * np.einsum('qnskj, qsml -> qmnjlk', dA, A)
-        summ += -np.einsum('qmnklj -> qmnjlk', ddA)
-        summ *= elementary_charge / 36
-
+        summ += -1/36 * elementary_charge * np.einsum('qmnklj -> qnmjlk', ddA)
+        summ += -1/72 * elementary_charge * 1j * np.einsum('qmsjl, qns, qsm, qsnk -> qnmjlk', dA, anti_kron, anti_kron, A)
+        summ += 1/72 * elementary_charge * 1j * np.einsum('qsnkl, qns, qsm, qmsj -> qnmjlk', dA, anti_kron, anti_kron, A)
+        summ += 1/36 * elementary_charge * np.einsum('qmp, qps, qsn, qmpj, qsnk, qpsl -> qnmjlk', anti_kron, anti_kron, anti_kron, A, A, A)
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
         ljk = summ.swapaxes(-2,-3)

@@ -18,7 +18,7 @@ def log(A, path):
 class test_Formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
         
         log(E, path='E')
         log( (data_K.grid.points_FFT) % 1, 'k')
@@ -120,6 +120,7 @@ def load(data_K, external_terms, spin):
     invEdif = data_K.Q2.invEdif
     Delta = data_K.Q2.Edif
     lev = data_K.Q2.levicivita
+    anti_kron = data_K.Q2.anti_kron
     if external_terms:
         A = data_K.Q2.A_H
         dA = data_K.Q2.gender_A_H
@@ -146,7 +147,7 @@ def load(data_K, external_terms, spin):
         S = data_K.Q2.S
     else:
         S = np.zeros(V.shape)
-    return E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S
+    return E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron
 
 
 ########################################################
@@ -156,7 +157,7 @@ def load(data_K, external_terms, spin):
 class Mag_sus_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
@@ -188,7 +189,7 @@ class Mag_sus_1(DynamicCalculator):
 class Mag_sus_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * 1/hbar * speed_of_light**(-2) * np.einsum('qmnk, qnml -> qnmkl', O, O)
@@ -213,13 +214,16 @@ class Mag_sus_2(DynamicCalculator):
         return omega_part_1(self.omega, self.smr_fixed_width ,E1, E2)
 
     def factor_Efermi(self, E1, E2):
-	    return self.FermiDirac(E1)
+        if E1 - E2 < 1e-3:
+            return self.FermiDirac(1000)
+        else:
+	        return self.FermiDirac(E1)
 
 
 class Mag_sus_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
         summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M, A, lev)
@@ -254,11 +258,11 @@ class Mag_sus_3(DynamicCalculator):
 class Gamma_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
+        # summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
+        # summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
         summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M, Q_P)
         self.Imn = summ
         self.ndim = 3
@@ -286,7 +290,7 @@ class Gamma_1(DynamicCalculator):
 class Gamma_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M, A)
@@ -320,7 +324,7 @@ class Gamma_2(DynamicCalculator):
 class Gamma_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knmi, kmnjl -> knmijl', O, dA)
@@ -346,7 +350,10 @@ class Gamma_3(DynamicCalculator):
         return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
 
     def factor_Efermi(self, E1, E2):
-	    return self.FermiDirac(E1)
+        if E1 - E2 < 1e-3:
+            return self.FermiDirac(1000)
+        else:
+	        return self.FermiDirac(E1)
 
 #####################################################
 # BETA
@@ -355,16 +362,16 @@ class Gamma_3(DynamicCalculator):
 class Beta_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/8 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
         summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('km, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
         summ += 1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kn, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, knpb, kpmj, kmnl, iab -> knmijl', dE, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpmb, knpj, kmnl, iab -> knmijl', dE, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, knpb, kpmj, kmnl, iab -> knmijl', dE, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpmb, knpj, kmnl, iab -> knmijl', dE, A, A, A, lev)
+        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
         summ += 1 * elementary_charge * np.einsum('knmij, kmnl -> knmijl', Q_M, A)
                 
         self.Imn = summ
@@ -393,11 +400,12 @@ class Beta_1(DynamicCalculator):
 class Beta_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1/3 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmni, knmlj -> knmijl', O, dA)
-        summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmla, kpnb, kmpj, iab -> knmijl', dA, A, A, lev)
+        summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmla, kpm, kpn, kpnb, kmpj, iab -> knmijl', dA, anti_kron, anti_kron, A, A, lev)
+
         self.Imn = np.real(summ)
         self.ndim = 3
 
@@ -418,7 +426,10 @@ class Beta_2(DynamicCalculator):
         return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
 
     def factor_Efermi(self, E1, E2):
-	    return self.FermiDirac(E1)
+        if E1 - E2 < 1e-3:
+            return self.FermiDirac(1000)
+        else:
+	        return self.FermiDirac(E1)
 
 
 #####################################################
@@ -429,7 +440,7 @@ class Beta_2(DynamicCalculator):
 class Delta_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmiaj, kmnb, lab -> knmijl', ddA, A, lev)
@@ -459,7 +470,7 @@ class Delta_1(DynamicCalculator):
 class Delta_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmaj, kmnb, knmi, lab -> knmijl', ddE, A, A, lev)
@@ -491,7 +502,7 @@ class Delta_2(DynamicCalculator):
 class Delta_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/6 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, kmj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
@@ -524,7 +535,7 @@ class Delta_3(DynamicCalculator):
 class Delta_4_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1 * elementary_charge * np.einsum('kmnlj, knmi -> knmijl', Q_M, A)
@@ -555,17 +566,17 @@ class Delta_4(DynamicCalculator):
 class Delta_5_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knp, kpm, knmi, kpnj, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knmi, kmpj, kpnb, lab -> knmijl', dE, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knmi, kpnj, kmpb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knp, kpm, knmi, kpnj, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knmi, kmpj, kpnb, lab -> knmijl', dE, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knmi, kpnj, kmpb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, knp, kpm, kpna, knmi, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, kmpa, knmi, kpnb, lab -> knmijl', dE, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, kpna, knmi, kmpb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, knp, kpm, kpna, knmi, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, kmpa, knmi, kpnb, lab -> knmijl', dE, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, kpna, knmi, kmpb, lab -> knmijl', dE, A, A, V, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kma, kmj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kma, knj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kna, kmj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
@@ -603,12 +614,12 @@ class Delta_5(DynamicCalculator):
 class Delta_6_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmnl, knmij -> knmijl', O, dA)
-        summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, kmpb, kpnj, lab -> knmijl', dA, A, A, lev)
-        summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, kpnb, kmpj, lab -> knmijl', dA, A, A, lev)
+        summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, knp, kpm, kmpb, kpnj, lab -> knmijl', dA, anti_kron, anti_kron, A, A, lev)
+        summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, knp, kpm, kpnb, kmpj, lab -> knmijl', dA, anti_kron, anti_kron, A, A, lev)
 
         self.Imn = np.real(summ)
         self.ndim = 3
@@ -630,7 +641,10 @@ class Delta_6(DynamicCalculator):
         return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
 
     def factor_Efermi(self, E1, E2):
-	    return self.FermiDirac(E1) 
+        if E1 - E2 < 1e-3:
+            return self.FermiDirac(1000)
+        else:
+	        return self.FermiDirac(E1) 
 
 ##############################################################
 # PI
@@ -640,7 +654,7 @@ class Delta_6(DynamicCalculator):
 class Pi_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += 1/6 * elementary_charge * np.einsum('qmnjlk, qnmi -> qnmijlk', O_P, A)
@@ -679,7 +693,7 @@ class Pi_1(DynamicCalculator):
 class Pi_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += -1/12 * elementary_charge**2 * np.einsum('qmj, qml, qnmi, qmnk -> qnmijlk', dE, dE, A, A)
@@ -719,7 +733,7 @@ class Pi_2(DynamicCalculator):
 class Pi_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += 1/24 * elementary_charge**2 * np.einsum('qmj, qmnkl, qnmi -> qnmijlk', dE, dA, A)
@@ -768,7 +782,7 @@ class Pi_3(DynamicCalculator):
 class Sigma_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qnmijlk', ddA, A)
@@ -803,7 +817,7 @@ class Sigma_1(DynamicCalculator):
 class Sigma_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += 1/4 * elementary_charge * 1j * np.einsum('qmk, qnmij, qmnl -> qnmijlk', dE, Q_P, A)
@@ -842,7 +856,7 @@ class Sigma_2(DynamicCalculator):
 class Capital_Gamma_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kma, knmij, kmnb, lab -> knmijl', dE, Q_P, A, lev)
@@ -874,7 +888,7 @@ class Capital_Gamma_1(DynamicCalculator):
 class Capital_Gamma_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knmija, kmnb, lab -> knmijl', ddA, A, lev)
@@ -906,7 +920,7 @@ class Capital_Gamma_2(DynamicCalculator):
 class Capital_Gamma_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += 1 * np.einsum('kmnl, knmij -> knmijl', M, Q_P)
@@ -937,7 +951,7 @@ class Capital_Gamma_3(DynamicCalculator):
 class Capital_Gamma_4_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knml, kmnij -> knmijl', O, dA)
@@ -964,10 +978,13 @@ class Capital_Gamma_4(DynamicCalculator):
         return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
 
     def factor_Efermi(self, E1, E2):
-	    return self.FermiDirac(E1)
+        if E1 - E2 < 1e-3:
+            return self.FermiDirac(1000)
+        else:
+	        return self.FermiDirac(E1)
 
 
-#############################################################3
+##############################################################
 # OMEGA
 ##############################################################
 
@@ -975,7 +992,7 @@ class Capital_Gamma_4(DynamicCalculator):
 class Omega_formula_1(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S = load(data_K, self.external_terms, spin)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += 1 * elementary_charge * np.einsum('qnmijl, qmnk -> qnmijlk', O_P, A)
