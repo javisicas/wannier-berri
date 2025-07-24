@@ -995,3 +995,30 @@ class NLDrude_Z_orb_Omega(FormulaSum):
         term1 = FormulaProduct([Der3E(data_K), Omega(data_K, **kwargs_formula)], name='Der3EOmega')
         term2 = FormulaProduct([Der2Omega(data_K, **kwargs_formula), data_K.covariant('Ham', commader=1)], name='Der2OmegaVel')
         super().__init__([term1, term2], [-1, 1], ['apsu', 'uaps'])
+
+
+#########################################################3
+# JAVIER 
+##########################################################
+
+class test(Matrix_ln):
+
+    def __init__(self, data_K):
+        # super().__init__(0.5 * (data_K.E_K[:, :, None] + data_K.E_K[:, None, :]))
+        # super().__init__(data_K.A_H_internal)
+        self.matrix = data_K.Xbar('Ham', 1)
+        self.ndim = 1
+        self.transformTR = transform_odd
+        self.transformInv = transform_odd
+        
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, 3].sum(axis=0)
+
+    # def __init__(self, data_K):
+    #     v = data_K.covariant('Ham', gender=1)
+    #     self.__dict__.update(v.__dict__)
+    #     if external_terms:
+    #         self.matrix = self.matrix + 1j * data_K.Xbar('AA') * (
+    #             data_K.E_K[:, :, None, None] - data_K.E_K[:, None, :, None])

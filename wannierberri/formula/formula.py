@@ -209,3 +209,4 @@ class DeltaProduct(Formula_ln):
 
     def ln(self, ik, inn, out):
         raise NotImplementedError()
+

@@ -26,15 +26,30 @@ class Q2_K:
 
     @cached_property
     def E_K(self):
+        # J
         return self.data_K.E_K * self.eV_to_J
 
     @cached_property
     def dE(self):
+        # J * m 
         return np.diagonal(self.data_K.Xbar('Ham', 1), axis1=1, axis2=2).transpose(0,2,1) * self.eV_to_J * self.A_to_m
 
     @cached_property
     def ddE(self):
-        return np.diagonal(self.data_K.Xbar('Ham', 2), axis1=1, axis2=2).transpose(0,3,1,2) * self.eV_to_J * self.A_to_m**2
+        # J * m^2
+        # PhysRevB.75.195121
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+
+        sc_eta = 0.04
+        E_K = self.E_K
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
+        D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
+
+        dHD_part = np.einsum('knma, kmnb -> knmab', dH, D_H_Pval)
+        ddE = ddH + dHD_part + np.conjugate(dHD_part.swapaxes(1,2))
+        return np.diagonal(ddE, axis1=1, axis2=2).transpose(0,3,1,2) 
 
     @cached_property
     def invEdif(self):
@@ -50,7 +65,10 @@ class Q2_K:
 
     @cached_property
     def A_H_internal(self):
-        return self.data_K.A_H_internal * self.A_to_m
+        A_int = self.data_K.A_H_internal
+        # Aa_int = self.kron[:, :, :, None] * A_int   # Energy diagonal piece
+        # A_int = A_int - Aa_int           # Energy non-diagonal piece
+        return A_int * self.A_to_m
 
     @cached_property
     def velocity(self):
@@ -199,7 +217,8 @@ class Q2_K:
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
         summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
         summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, ksla, klmj, knsb, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, A, V, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, klmj, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, ksla, klmj, knsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, klsa, knlj, ksmb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, ksma, knlj, klsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
@@ -231,7 +250,8 @@ class Q2_K:
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
         summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
         summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, ksla, klmj, knsb, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, A, V, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, klmj, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
+        summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, ksla, klmj, knsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, klsa, knlj, ksmb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, ksma, knlj, klsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
@@ -264,7 +284,7 @@ class Q2_K:
         lkj = ljk.swapaxes(-1,-2)
         klj = summ.swapaxes(-1-3)
         kjl = klj.swapaxes(-1,-2)
-        return 1/6 * (jlk + jkl + ljk + lkj + klj + kjl)
+        return jlk + jkl + ljk + lkj + klj + kjl
 
     @cached_property
     def electric_octupole_internal(self):
@@ -284,7 +304,6 @@ class Q2_K:
         lkj = ljk.swapaxes(-1,-2)
         klj = summ.swapaxes(-1,-3)
         kjl = klj.swapaxes(-1,-2)
-
         return jlk + jkl + ljk + lkj + klj + kjl
 
 ####################################################################
@@ -293,22 +312,23 @@ class Q2_K:
 
     @cached_property
     def Edif(self):
-        E = self.data_K.E_K
+        # J
+        E = self.E_K
         return E[:,:,None] - E[:,None,:]
 
     @cached_property
     def dDelta(self):
-        # this needs testing, is dE_dif the same as dvnn + dvmm
-        dH = self.data_K.Xbar('Ham', 1)
-        ddE = self.ddE
+        D = self.data_K.D_H * self.A_to_m
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
         Edif = self.Edif
+        anti_kron = self.anti_kron
 
-        result = ddE[:,:,None,:,:] - ddE[:,None,:,:]
-        result += -np.einsum('knpb, kpnc, kpn', dH, dH, Edif)
-        result += +np.einsum('kmpb, kpmc, kpm', dH, dH, Edif)
-        result += +np.einsum('kpnb, knpc, knp', dH, dH, Edif)
-        result += -np.einsum('kpmb, kmpc, kmp', dH, dH, Edif)
-        return result
+        nn = np.zeros((self.data_K.nk, self.data_K.num_wann, 3, 3), dtype=complex)
+        nn += 1j * np.einsum('knp, knpc, kpna -> knac', anti_kron**2, D, dH) #0
+        nn -= 1j * np.einsum('knp, kpnc, knpa -> knac', anti_kron**2, D, dH) #1
+        nn += np.einsum('knnac -> knac', ddH) #2
+        return nn[:,:,None,:] - nn[:,None,:,:]
 
     @cached_property
     def Delta(self):
@@ -319,14 +339,14 @@ class Q2_K:
 
     @cached_property
     def gender_A_H(self):
-        A_bar = self.data_K.Xbar('AA')
-        dA_bar = self.data_K.Xbar('AA', 1)
-        dH = self.data_K.Xbar('Ham', 1)
-        ddH = self.data_K.Xbar('Ham', 2)
+        A_bar = self.data_K.Xbar('AA') * self.A_to_m
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_m**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif
-        inv_Edif = self.data_K.dEig_inv
+        inv_Edif = self.invEdif
         inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
         anti_kron = self.anti_kron
         
@@ -345,16 +365,16 @@ class Q2_K:
         summ -= 1j * np.einsum('knm, knp, kpma, knpc, kmp, knp -> knmac', inv_Edif, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #11
         summ += 1j * np.einsum('knm, knma, knmc -> knmac', inv_Edif**2, dH, Delta) #12
         summ += 1j * np.einsum('knm, knmc, knma -> knmac', inv_Edif**2, dH, Delta) #13
-        return summ * self.A_to_m**2
+        return summ
 
     @cached_property
     def gender_A_H_internal(self):
-        dH = self.data_K.Xbar('Ham', 1)
-        ddH = self.data_K.Xbar('Ham', 2)
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif
-        inv_Edif = self.data_K.dEig_inv
+        inv_Edif = self.invEdif
         inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
         anti_kron = self.anti_kron
 
@@ -365,19 +385,20 @@ class Q2_K:
         summ -= 1j * np.einsum('knm, knma, kmmb -> knmab', inv_Edif**2, dH, dH) #3
         summ += 1j * np.einsum('knm, knma, knnb -> knmab', inv_Edif**2, dH, dH) #4
         summ += 1j * np.einsum('knm, knmb, knma -> knmab', inv_Edif**2, dH, Delta) #5
-        return summ * self.A_to_m**2
+        return summ
 
     @cached_property
     def gender2_A_H_internal(self):
         # TB: A_bar -> 0, only term is gender of eq 32
-        dH = self.data_K.Xbar('Ham', 1)
-        ddH = self.data_K.Xbar('Ham', 2)
-        dddH = self.data_K.Xbar('Ham', 3)
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+        dddH = self.data_K.Xbar('Ham', 3) * self.eV_to_J * self.A_to_m**3
+        D = self.data_K.D_H * self.A_to_m
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif
         dDelta = self.dDelta
-        inv_Edif = self.data_K.dEig_inv
+        inv_Edif = self.invEdif
         inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
         gender_A = self.gender_A_H_internal
         anti_kron = self.anti_kron
@@ -386,50 +407,59 @@ class Q2_K:
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
 
         # NOTE: Use anti_kronekers for the summations
-        summ -= 1j * np.einsum('knm, knmabc -> knmabc', inv_Edif, dddH) #0
-        summ -= 1j * np.einsum('knm, knmc, knmab -> knmabc', inv_Edif, Delta, gender_A) #1
-        summ += 1j * np.einsum('knm, kpm, knpa, kpmbc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #2
-        summ += 1j * np.einsum('knm, kpm, kpmb, knpac, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #3
-        summ += 1j * np.einsum('knm, kpm, kpmc, knpab, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #4
-        summ -= 1j * np.einsum('knm, kpm, kqp, knqa, kpmb, kqpc, kmp, knp, knq, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #5
-        summ -= 1j * np.einsum('knm, kpm, kqm, knpa, kpqb, kqmc, kmp, kmq, knp, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #6
-        summ += 1j * np.einsum('knm, kpm, kpq, knpa, kqmb, kpqc, kmp, kmq, knp, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #7
-        summ += 1j * np.einsum('knm, kpm, knpa, kmmb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #8
-        summ -= 1j * np.einsum('knm, kpm, knpa, kpmb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, Delta, anti_kron, anti_kron) #9
-        summ -= 1j * np.einsum('knm, kpm, knpa, kppb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #10
-        summ += 1j * np.einsum('knm, knq, kpm, kqpa, kpmb, knqc, kmp, knp, knq, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #11
-        summ -= 1j * np.einsum('knm, knp, kpma, knpbc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #12
-        summ -= 1j * np.einsum('knm, knp, knpb, kpmac, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #13
-        summ -= 1j * np.einsum('knm, knp, knpc, kpmab, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #14
-        summ += 1j * np.einsum('knm, knp, kqp, kpma, knqb, kqpc, kmp, knp, knq, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #15
-        summ += 1j * np.einsum('knm, knp, kqm, kpqa, knpb, kqmc, kmp, kmq, knp, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #16
-        summ -= 1j * np.einsum('knm, knp, kpq, kqma, knpb, kpqc, kmp, kmq, knp, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #17
-        summ -= 1j * np.einsum('knm, knp, kpm, kmma, knpb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #18
-        summ -= 1j * np.einsum('knm, knp, kpm, knna, kpmb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #19
-        summ += 1j * np.einsum('knm, knp, kpm, kppa, knpb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #20
-        summ += 1j * np.einsum('knm, knp, kpm, kppa, kpmb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #21
-        summ -= 1j * np.einsum('knm, knp, knq, kpma, kqpb, knqc, kmp, knp, knq, kpq -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron, anti_kron, anti_kron) #22
-        summ += 1j * np.einsum('knm, knp, kpma, knnb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #23
-        summ += 1j * np.einsum('knm, knp, kpma, knpb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, Delta, anti_kron, anti_kron) #24
-        summ -= 1j * np.einsum('knm, knp, kpma, kppb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #25
-        summ += 1j * np.einsum('knm, knma, knmbc -> knmabc', inv_Edif**2, dH, dDelta) #26
-        summ += 1j * np.einsum('knm, knmb, knmac -> knmabc', inv_Edif**2, dH, dDelta) #27
-        summ -= 1j * np.einsum('knm, knmc, kmmab -> knmabc', inv_Edif**2, dH, ddH) #28
-        summ += 1j * np.einsum('knm, knmc, knnab -> knmabc', inv_Edif**2, dH, ddH) #29
-        summ += 1j * np.einsum('knm, knmac, knmb -> knmabc', inv_Edif**2, ddH, Delta) #30
-        summ += 1j * np.einsum('knm, knmbc, knma -> knmabc', inv_Edif**2, ddH, Delta) #31
-        summ -= 1j * np.einsum('knm, kpm, knpa, kpmc, knmb, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #32
-        summ -= 1j * np.einsum('knm, kpm, knpb, kpmc, knma, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #33
-        summ += 1j * np.einsum('knm, knp, kpma, knpc, knmb, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #34
-        summ += 1j * np.einsum('knm, knp, kpmb, knpc, knma, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #35
-        summ += 1j * np.einsum('knm, kmma, knmc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #36
-        summ -= 1j * np.einsum('knm, knma, knmb, knmc -> knmabc', inv_Edif**3, dH, Delta, Delta) #37
-        summ -= 1j * np.einsum('knm, knna, knmc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #38
-        summ += 1j * np.einsum('knm, kmmb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #39
-        summ -= 1j * np.einsum('knm, knmb, knma, knmc -> knmabc', inv_Edif**3, dH, Delta, Delta) #40
-        summ -= 1j * np.einsum('knm, knnb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #41
-        return summ  * self.A_to_m**3
-    
+        summ += -1 * np.einsum('knm, kpm, kmp, kppc, knpa, kpmb, knp, kpp -> knmabc', inv_Edif, inv_Edif_eta, anti_kron**2, D, dH, dH, anti_kron, anti_kron) #0
+        summ += 1 * np.einsum('knm, kpm, knp, kppc, knpa, kpmb, kmp, kpp -> knmabc', inv_Edif, inv_Edif_eta, anti_kron**2, D, dH, dH, anti_kron, anti_kron) #1
+        summ += 1 * np.einsum('knm, knp, kmp, kppc, kpma, knpb, knp, kpp -> knmabc', inv_Edif, inv_Edif_eta, anti_kron**2, D, dH, dH, anti_kron, anti_kron) #2
+        summ += -1 * np.einsum('knm, knp, knp, kppc, kpma, knpb, kmp, kpp -> knmabc', inv_Edif, inv_Edif_eta, anti_kron**2, D, dH, dH, anti_kron, anti_kron) #3
+        summ += -1 * 1j * np.einsum('knm, knmabc -> knmabc', inv_Edif, dddH) #4
+        summ += 1 * 1j * np.einsum('knm, kpm, knpa, kpmbc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #5
+        summ += 1 * 1j * np.einsum('knm, kpm, kpmb, knpac, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #6
+        summ += 1 * 1j * np.einsum('knm, kpm, kpmc, knpab, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #7
+        summ += 1 * 1j * np.einsum('knm, kpm, knpa, kmmb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #8
+        summ += 1 * 1j * np.einsum('knm, kpm, knpa, kpmb, kmmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #9
+        summ += -1 * 1j * np.einsum('knm, kpm, knpa, kpmb, kppc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #10
+        summ += -1 * 1j * np.einsum('knm, kpm, kmp, knpa, kppb, kpmc, knp, kpp -> knmabc', inv_Edif, inv_Edif_eta**2, anti_kron**2, dH, dH, dH, anti_kron, anti_kron) #11
+        summ += -1 * 1j * np.einsum('knm, kpm, knpa, kppb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #12
+        summ += -1 * 1j * np.einsum('knm, knp, kpma, knpbc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #13
+        summ += -1 * 1j * np.einsum('knm, knp, knpb, kpmac, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #14
+        summ += -1 * 1j * np.einsum('knm, knp, knpc, kpmab, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, dH, ddH, anti_kron, anti_kron) #15
+        summ += -1 * 1j * np.einsum('knm, knp, kpm, kmma, knpb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #16
+        summ += -1 * 1j * np.einsum('knm, knp, kpm, knna, kpmb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #17
+        summ += 1 * 1j * np.einsum('knm, knp, kpm, kmp, kppa, knpb, kpmc, knp, kpp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, anti_kron**2, dH, dH, dH, anti_kron, anti_kron) #18
+        summ += 1 * 1j * np.einsum('knm, knp, kpm, kppa, knpb, kpmc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #19
+        summ += 1 * 1j * np.einsum('knm, knp, kpm, knp, kppa, kpmb, knpc, kmp, kpp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, anti_kron**2, dH, dH, dH, anti_kron, anti_kron) #20
+        summ += 1 * 1j * np.einsum('knm, knp, kpm, kppa, kpmb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #21
+        summ += 1 * 1j * np.einsum('knm, knp, kpma, knnb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #22
+        summ += 1 * 1j * np.einsum('knm, knp, kpma, knpb, knnc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #23
+        summ += -1 * 1j * np.einsum('knm, knp, kpma, knpb, kppc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #24
+        summ += -1 * 1j * np.einsum('knm, knp, knp, kpma, kppb, knpc, kmp, kpp -> knmabc', inv_Edif, inv_Edif_eta**2, anti_kron**2, dH, dH, dH, anti_kron, anti_kron) #25
+        summ += -1 * 1j * np.einsum('knm, knp, kpma, kppb, knpc, kmp, knp -> knmabc', inv_Edif, inv_Edif_eta**2, dH, dH, dH, anti_kron, anti_kron) #26
+        summ += 1 * 1j * np.einsum('knm, knma, knmbc -> knmabc', inv_Edif**2, dH, dDelta) #27
+        summ += 1 * 1j * np.einsum('knm, knmb, knmac -> knmabc', inv_Edif**2, dH, dDelta) #28
+        summ += -1 * 1j * np.einsum('knm, kmmc, knmab -> knmabc', inv_Edif**2, dH, ddH) #29
+        summ += -1 * 1j * np.einsum('knm, knmc, kmmab -> knmabc', inv_Edif**2, dH, ddH) #30
+        summ += 1 * 1j * np.einsum('knm, knmc, knnab -> knmabc', inv_Edif**2, dH, ddH) #31
+        summ += 1 * 1j * np.einsum('knm, knnc, knmab -> knmabc', inv_Edif**2, dH, ddH) #32
+        summ += 1 * 1j * np.einsum('knm, knmac, knmb -> knmabc', inv_Edif**2, ddH, Delta) #33
+        summ += 1 * 1j * np.einsum('knm, knmbc, knma -> knmabc', inv_Edif**2, ddH, Delta) #34
+        summ += 1 * 1j * np.einsum('knm, kpm, knpa, kpmb, kmmc, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #35
+        summ += -1 * 1j * np.einsum('knm, kpm, knpa, kpmb, knnc, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #36
+        summ += -1 * 1j * np.einsum('knm, kpm, knpa, kpmc, knmb, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #37
+        summ += -1 * 1j * np.einsum('knm, kpm, knpb, kpmc, knma, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #38
+        summ += -1 * 1j * np.einsum('knm, knp, kpma, knpb, kmmc, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #39
+        summ += 1 * 1j * np.einsum('knm, knp, kpma, knpb, knnc, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, dH, anti_kron, anti_kron) #40
+        summ += 1 * 1j * np.einsum('knm, knp, kpma, knpc, knmb, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #41
+        summ += 1 * 1j * np.einsum('knm, knp, kpmb, knpc, knma, kmp, knp -> knmabc', inv_Edif**2, inv_Edif_eta, dH, dH, Delta, anti_kron, anti_kron) #42
+        summ += 1 * 1j * np.einsum('knm, kmma, knmc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #43
+        summ += 2 * 1j * np.einsum('knm, knma, kmmc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #44
+        summ += -2 * 1j * np.einsum('knm, knma, knnc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #45
+        summ += -1 * 1j * np.einsum('knm, knna, knmc, knmb -> knmabc', inv_Edif**3, dH, dH, Delta) #46
+        summ += 1 * 1j * np.einsum('knm, kmmb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #47
+        summ += 2 * 1j * np.einsum('knm, knmb, kmmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #48
+        summ += -2 * 1j * np.einsum('knm, knmb, knnc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #49
+        summ += -1 * 1j * np.einsum('knm, knnb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #50
+        return summ
+
 #########################################################
 # MISC
 #########################################################

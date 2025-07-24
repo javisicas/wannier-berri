@@ -28,6 +28,7 @@ class test_Formula(Formula):
         log(O, path='O')
         log(Q_P, path='Q_P')
         log(Q_M, path='Q_M')
+        log(Q_M, path='O_P')
 
         self.Imn = A
         self.ndim = 1
@@ -47,6 +48,32 @@ class test(DynamicCalculator):
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
         return np.ones(self.omega.shape)
+
+
+class Energy_Formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E_K = data_K.Q2.E_K
+
+        self.Imn = E_K[:,:,None] + E_K[:,None,:]
+        self.ndim = 0
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Energy(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update()
+        self.Formula = Energy_Formula
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.constant_factor =  factors.factor_cell_volume_to_m        
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return np.ones(self.omega.shape)
+
 
 ###############################################################################
 ev_to_J = 1.602176634e-19
@@ -158,6 +185,10 @@ class Mag_sus_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        #A
+        #ddV
+        #lev
+        #M
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
@@ -569,14 +600,14 @@ class Delta_5_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knp, kpm, knmi, kmpj, kpnb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knp, kpm, knmi, kpnj, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kma, knmi, kmpj, kpnb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knp, kpm, knmi, kmpj, kpnb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knp, kpm, knmi, kpnj, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kna, knmi, kmpj, kpnb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, knp, kpm, kmpa, knmi, kpnb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, knp, kpm, kpna, knmi, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('kmj, kmpa, knmi, kpnb, lab -> knmijl', dE, A, A, V, lev)
+        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, knp, kpm, kmpa, knmi, kpnb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, knp, kpm, kpna, knmi, kmpb, lab -> knmijl', dE, anti_kron, anti_kron, A, A, V, lev)
-        summ += 1/12 * elementary_charge**2 * 1/speed_of_light * 1j * np.einsum('knj, kmpa, knmi, kpnb, lab -> knmijl', dE, A, A, V, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kma, kmj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kma, knj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
         summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kna, kmj, kmnb, knmi, lab -> knmijl', dE, dE, A, A, lev)
@@ -620,7 +651,7 @@ class Delta_6_formula(Formula):
         summ += 1/6 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmnl, knmij -> knmijl', O, dA)
         summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, knp, kpm, kmpb, kpnj, lab -> knmijl', dA, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('knmia, knp, kpm, kpnb, kmpj, lab -> knmijl', dA, anti_kron, anti_kron, A, A, lev)
-
+        
         self.Imn = np.real(summ)
         self.ndim = 3
 
@@ -862,6 +893,7 @@ class Capital_Gamma_1_formula(Formula):
         summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kma, knmij, kmnb, lab -> knmijl', dE, Q_P, A, lev)
         summ += -1/4 * elementary_charge * speed_of_light * np.einsum('kna, knmij, kmnb, lab -> knmijl', dE, Q_P, A, lev)
 
+
         self.Imn = summ
         self.ndim = 3
 
@@ -875,7 +907,7 @@ class Capital_Gamma_1(DynamicCalculator):
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_ident
+        self.transformTR = transform_odd
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
@@ -907,7 +939,7 @@ class Capital_Gamma_2(DynamicCalculator):
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_ident
+        self.transformTR = transform_odd
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
@@ -938,7 +970,7 @@ class Capital_Gamma_3(DynamicCalculator):
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_ident
+        self.transformTR = transform_odd
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
@@ -971,7 +1003,7 @@ class Capital_Gamma_4(DynamicCalculator):
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_4_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_ident
+        self.transformTR = transform_odd
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe

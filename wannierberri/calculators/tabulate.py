@@ -207,3 +207,8 @@ class SpinBerry(Tabulator):
 
     def __init__(self, **kwargs):
         super().__init__(frml.SpinOmega, **kwargs)
+
+class Test(Tabulator):
+
+    def __init__(self, **kwargs):
+        super().__init__(frml.test, **kwargs)
