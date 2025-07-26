@@ -181,18 +181,41 @@ def load(data_K, external_terms, spin):
 # MAGNETIC SUSCEPTIBILITY
 ########################################################
 
-class Mag_sus_1_formula(Formula):
+
+class Mag_sus_TR_even(MultitermCalculator):
+
+    def __init__(self, spin=False, **kwargs):
+        super().__init__(**kwargs)
+        params_terms = dict(spin=spin)
+        # Fermi sea terms
+        self.terms.extend([Mag_sus_even_1(**params_terms, **kwargs),
+                           Mag_sus_even_2(**params_terms, **kwargs),
+                           Mag_sus_even_3(**params_terms, **kwargs)])
+
+
+class Mag_sus_TR_odd(MultitermCalculator):
+
+    def __init__(self, spin=False, **kwargs):
+        super().__init__(**kwargs)
+        params_terms = dict(spin=spin)
+        # Fermi sea terms
+        self.terms.extend([Mag_sus_odd_1(**params_terms, **kwargs),
+                           Mag_sus_odd_3(**params_terms, **kwargs)])
+
+class Mag_sus_even_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
-        #A
-        #ddV
-        #lev
-        #M
+        A = data_K.Q2.A_H_internal
+        ddV = data_K.Q2.gender2_velocity_internal
+        lev = data_K.Q2.levicivita
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
-        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M, M)
+        # summ += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
+        # summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_even, M_even)
+        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_odd, M_odd)
 
         self.Imn = summ
         self.ndim = 2
@@ -201,11 +224,11 @@ class Mag_sus_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Mag_sus_1(DynamicCalculator):
+class Mag_sus_even_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_1_formula
+        self.Formula = Mag_sus_even_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -217,10 +240,47 @@ class Mag_sus_1(DynamicCalculator):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
 
-class Mag_sus_2_formula(Formula):
+class Mag_sus_odd_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        A = data_K.Q2.A_H_internal
+        ddV = data_K.Q2.gender2_velocity_internal
+        lev = data_K.Q2.levicivita
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        invEdif = data_K.Q2.invEdif
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_even, M_odd)
+        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_odd, M_even)
+
+        self.Imn = summ
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Mag_sus_odd_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_odd_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_odd
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_0(self.omega, self.smr_fixed_width ,E1, E2)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Mag_sus_even_2_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
         summ += -1/16 * elementary_charge**2 * 1/hbar * speed_of_light**(-2) * np.einsum('qmnk, qnml -> qnmkl', O, O)
@@ -232,11 +292,11 @@ class Mag_sus_2_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Mag_sus_2(DynamicCalculator):
+class Mag_sus_even_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_2_formula
+        self.Formula = Mag_sus_even_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -251,14 +311,18 @@ class Mag_sus_2(DynamicCalculator):
 	        return self.FermiDirac(E1)
 
 
-class Mag_sus_3_formula(Formula):
+class Mag_sus_even_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        invEdif = data_K.Q2.invEdif
+        dE = data_K.Q2.dE
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        A = data_K.Q2.A_H_internal
+        lev = data_K.Q2.levicivita
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M, A, lev)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M, A, lev)
+        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
+        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
         self.Imn = summ
         self.ndim = 2
 
@@ -266,11 +330,11 @@ class Mag_sus_3_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Mag_sus_3(DynamicCalculator):
+class Mag_sus_even_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_3_formula
+        self.Formula = Mag_sus_even_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -282,19 +346,78 @@ class Mag_sus_3(DynamicCalculator):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
 
+class Mag_sus_odd_3_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        invEdif = data_K.Q2.invEdif
+        dE = data_K.Q2.dE
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        A = data_K.Q2.A_H_internal
+        lev = data_K.Q2.levicivita
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+        self.Imn = summ
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Mag_sus_odd_3(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_odd_3_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_odd
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_2(self.omega, self.smr_fixed_width ,E1, E2)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
 #########################################
 # Gamma (LOWER CASE)
 #########################################
 
-class Gamma_1_formula(Formula):
+class Gamma_TR_even(MultitermCalculator):
+
+    def __init__(self, spin=False, **kwargs):
+        super().__init__(**kwargs)
+        params_terms = dict(spin=spin)
+        # Fermi sea terms
+        self.terms.extend([Gamma_even_1(**params_terms, **kwargs),
+                           Gamma_even_2(**params_terms, **kwargs),
+                           Gamma_even_3(**params_terms, **kwargs)])
+
+
+class Gamma_TR_odd(MultitermCalculator):
+
+    def __init__(self, spin=False, **kwargs):
+        super().__init__(**kwargs)
+        params_terms = dict(spin=spin)
+        # Fermi sea terms
+        self.terms.extend([Gamma_odd_1(**params_terms, **kwargs),
+                           Gamma_odd_2(**params_terms, **kwargs)])
+
+
+class Gamma_even_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        ddV = data_K.Q2.gender2_velocity_internal
+        A = data_K.Q2.A_H_internal
+        lev = data_K.Q2.levicivita
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        Q_P = data_K.Q2.electric_quadrupole_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        # summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
-        # summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
-        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M, Q_P)
+        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
+        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
+        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M_even, Q_P)
         self.Imn = summ
         self.ndim = 3
 
@@ -302,11 +425,45 @@ class Gamma_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Gamma_1(DynamicCalculator):
+class Gamma_even_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Gamma_1_formula
+        self.Formula = Gamma_even_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width ,E1, E2)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Gamma_odd_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        ddV = data_K.Q2.gender2_velocity_internal
+        A = data_K.Q2.A_H_internal
+        lev = data_K.Q2.levicivita
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        Q_P = data_K.Q2.electric_quadrupole_internal
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M_odd, Q_P)
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Gamma_odd_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Gamma_odd_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_odd
         self.transformInv = transform_ident
@@ -318,16 +475,18 @@ class Gamma_1(DynamicCalculator):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
 
-class Gamma_2_formula(Formula):
+class Gamma_even_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        dE = data_K.Q2.dE
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        A = data_K.Q2.A_H_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_even, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_even, A)
 
         self.Imn = summ
         self.ndim = 3
@@ -336,11 +495,47 @@ class Gamma_2_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Gamma_2(DynamicCalculator):
+class Gamma_even_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Gamma_2_formula
+        self.Formula = Gamma_even_2_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_4(self.omega, self.smr_fixed_width ,E1, E2)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Gamma_odd_2_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        dE = data_K.Q2.dE
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        A = data_K.Q2.A_H_internal
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_odd, A)
+        summ += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_odd, A)
+
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Gamma_odd_2(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Gamma_odd_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_odd
         self.transformInv = transform_ident
@@ -351,11 +546,13 @@ class Gamma_2(DynamicCalculator):
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
-    
-class Gamma_3_formula(Formula):
+
+class Gamma_even_3_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        O = data_K.Q2.berry_curvature_internal
+        dA = data_K.Q2.gender_A_H_internal
+        Q_P = data_K.Q2.electric_quadrupole_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
         summ += -1/8 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knmi, kmnjl -> knmijl', O, dA)
@@ -368,13 +565,13 @@ class Gamma_3_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Gamma_3(DynamicCalculator):
+class Gamma_even_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Gamma_3_formula
+        self.Formula = Gamma_even_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe

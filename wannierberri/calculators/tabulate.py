@@ -208,7 +208,30 @@ class SpinBerry(Tabulator):
     def __init__(self, **kwargs):
         super().__init__(frml.SpinOmega, **kwargs)
 
-class Test(Tabulator):
+
+#######################################################
+from ..formula.formula import Formula_ln, Matrix_ln, Matrix_GenDer_ln, FormulaProduct, FormulaSum, DeltaProduct
+
+
+class M1_even(Tabulator):
 
     def __init__(self, **kwargs):
-        super().__init__(frml.test, **kwargs)
+        super().__init__(frml.M1_even, **kwargs)
+
+
+class M3_even(Tabulator):
+
+    def __init__(self, **kwargs):
+        super().__init__(frml.M3_even, **kwargs)
+
+
+class M1_odd(Tabulator):
+
+    def __init__(self, **kwargs):
+        super().__init__(frml.M1_odd, **kwargs)
+
+
+class M3_odd(Tabulator):
+
+    def __init__(self, **kwargs):
+        super().__init__(frml.M3_odd, **kwargs)

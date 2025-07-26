@@ -26,17 +26,14 @@ class Q2_K:
 
     @cached_property
     def E_K(self):
-        # J
         return self.data_K.E_K * self.eV_to_J
 
     @cached_property
     def dE(self):
-        # J * m 
         return np.diagonal(self.data_K.Xbar('Ham', 1), axis1=1, axis2=2).transpose(0,2,1) * self.eV_to_J * self.A_to_m
 
     @cached_property
     def ddE(self):
-        # J * m^2
         # PhysRevB.75.195121
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
         ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
@@ -66,8 +63,6 @@ class Q2_K:
     @cached_property
     def A_H_internal(self):
         A_int = self.data_K.A_H_internal
-        # Aa_int = self.kron[:, :, :, None] * A_int   # Energy diagonal piece
-        # A_int = A_int - Aa_int           # Energy non-diagonal piece
         return A_int * self.A_to_m
 
     @cached_property
@@ -84,7 +79,7 @@ class Q2_K:
 
     @cached_property
     def velocity_internal(self):
-        # eq 61, in SI
+        # eq 61
         E = self.E_K
         A = self.A_H_internal
         dE = self.dE # knma
@@ -96,7 +91,6 @@ class Q2_K:
 
     @cached_property
     def berry_curvature(self):
-        # in SI (m**2)
         gender_A = self.gender_A_H
         
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
@@ -118,7 +112,7 @@ class Q2_K:
 
     @cached_property
     def gender2_velocity_internal(self):
-        # Eq (D4), off diagonal in units of eV*A^3/hbar
+        # Eq (D4), SI
         E = self.E_K
         dE = self.dE
         ddE = self.ddE
@@ -163,7 +157,7 @@ class Q2_K:
         return summ
 
     @cached_property
-    def magnetic_dipole_internal(self):
+    def magnetic_dipole_internal_TR_even(self):
         V = self.velocity_internal
         dE = self.dE
         A = self.A_H_internal
@@ -179,8 +173,24 @@ class Q2_K:
         summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> kmnl', dE, A, lev)
-        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> kmnl', S)
         return summ
+
+    @cached_property
+    def magnetic_dipole_internal_TR_odd(self):
+        V = self.velocity_internal
+        dE = self.dE
+        A = self.A_H_internal
+        lev = self.levicivita
+        anti_kron = self.anti_kron
+        try:
+            S = self.data_K.Xbar('SS') * hbar/2         
+        except:
+            S = np.zeros(V.shape)
+
+        summ = np.zeros((V.shape), dtype=complex) # kmnl
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * S
+        return summ
+
 
     @cached_property
     def electric_quadrupole(self):
@@ -234,7 +244,26 @@ class Q2_K:
         return summ
 
     @cached_property
-    def magnetic_quadrupole_internal(self):
+    def magnetic_quadrupole_internal_TR_even(self):
+        A = self.A_H_internal
+        dA = self.gender_A_H_internal
+        V = self.velocity_internal
+        dE = self.dE
+        ddE = self.ddE
+        lev = self.levicivita
+        anti_kron = self.anti_kron
+        try:
+            S = self.S         
+        except:
+            S = np.zeros(V.shape)
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
+        return summ
+
+    @cached_property
+    def magnetic_quadrupole_internal_TR_odd(self):
         A = self.A_H_internal
         dA = self.gender_A_H_internal
         V = self.velocity_internal
@@ -262,8 +291,6 @@ class Q2_K:
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
         return summ
 
     @cached_property

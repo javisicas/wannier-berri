@@ -1001,20 +1001,41 @@ class NLDrude_Z_orb_Omega(FormulaSum):
 # JAVIER 
 ##########################################################
 
-class test(Matrix_ln):
+class M_even(Matrix_ln):
 
     def __init__(self, data_K):
-        # super().__init__(0.5 * (data_K.E_K[:, :, None] + data_K.E_K[:, None, :]))
-        # super().__init__(data_K.A_H_internal)
-        self.matrix = data_K.Xbar('Ham', 1)
+        self.band = band
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_even)
         self.ndim = 1
-        self.transformTR = transform_odd
-        self.transformInv = transform_odd
-        
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
 
     def trace(self, ik, inn, out):
         "Returns a trace over the `inn` states"
-        return self.matrix[ik][inn][:, 3].sum(axis=0)
+        return self.matrix[ik][inn][:, self.band].sum(axis=0)
+
+
+class M_odd(Matrix_ln):
+
+    def __init__(self, data_K):
+        self.band = band
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_odd)
+        self.ndim = 1
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, self.band].sum(axis=0)
+
 
     # def __init__(self, data_K):
     #     v = data_K.covariant('Ham', gender=1)
@@ -1022,3 +1043,71 @@ class test(Matrix_ln):
     #     if external_terms:
     #         self.matrix = self.matrix + 1j * data_K.Xbar('AA') * (
     #             data_K.E_K[:, :, None, None] - data_K.E_K[:, None, :, None])
+
+
+class M1_even(Matrix_ln):
+
+    def __init__(self, data_K):
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_even)
+        self.ndim = 1
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, 12].sum(axis=0)
+
+
+class M3_even(Matrix_ln):
+
+    def __init__(self, data_K):
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_even)
+        self.ndim = 1
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, 14].sum(axis=0)
+
+
+class M1_odd(Matrix_ln):
+
+    def __init__(self, data_K):
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_odd)
+        self.ndim = 1
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, 12].sum(axis=0)
+
+
+class M3_odd(Matrix_ln):
+
+    def __init__(self, data_K):
+        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = M_odd + M_even
+
+        self.matrix = np.imag(M_odd)
+        self.ndim = 1
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace(self, ik, inn, out):
+        "Returns a trace over the `inn` states"
+        return self.matrix[ik][inn][:, 14].sum(axis=0)

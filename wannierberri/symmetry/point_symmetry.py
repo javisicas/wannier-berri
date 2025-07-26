@@ -517,6 +517,7 @@ class TransformProduct(Transform):
 transform_ident = Transform()
 transform_odd = Transform(factor=-1)
 transform_odd_conj = Transform(factor=-1, conj=True)
+transform_even_conj = Transform(factor=1, conj=True)
 transform_odd_trans_021 = Transform(factor=-1, transpose_axes=(0, 2, 1))
 transform_trans = Transform(transpose_axes=(1, 0))
 
