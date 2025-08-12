@@ -6,7 +6,55 @@ from scipy.constants import elementary_charge, hbar, electron_mass, physical_con
 from .. import factors as factors
 from .calculator import MultitermCalculator
 from .dynamic import DynamicCalculator
+from itertools import permutations
 
+def symmetrize_axes(arr, axes_to_symmetrize):
+    """
+    Symmetrize the array over the specified three axes by averaging over all permutations.
+    
+    Parameters:
+    arr (numpy.ndarray): Input array to symmetrize.
+    axes_to_symmetrize (list of int): List of three axes to symmetrize.
+    
+    Returns:
+    numpy.ndarray: Symmetrized array.
+    """
+    # Validate input
+    if len(axes_to_symmetrize) != 3:
+        raise ValueError("Exactly three axes must be specified for symmetrization.")
+    if len(set(axes_to_symmetrize)) != 3:
+        raise ValueError("The axes to symmetrize must be distinct.")
+    if any(axis >= arr.ndim or axis < -arr.ndim for axis in axes_to_symmetrize):
+        raise ValueError("One or more specified axes are out of bounds for the array.")
+    
+    # Convert negative axes to positive for easier handling
+    axes_to_symmetrize = [axis if axis >= 0 else arr.ndim + axis for axis in axes_to_symmetrize]
+    
+    # Generate all permutations of the specified axes
+    all_permutations = list(permutations(axes_to_symmetrize))
+    
+    # Initialize the symmetrized array
+    symmetrized = np.zeros_like(arr)
+    
+    # For each permutation, transpose the array and add to the sum
+    for perm in all_permutations:
+        # Construct the new axis order:
+        # - All axes not in `axes_to_symmetrize` remain in their original positions.
+        # - The axes in `axes_to_symmetrize` are permuted according to `perm`.
+        new_order = []
+        for axis in range(arr.ndim):
+            if axis in axes_to_symmetrize:
+                # This axis is being permuted; find its new position in `perm`
+                new_order.append(perm[axes_to_symmetrize.index(axis)])
+            else:
+                # This axis is not being permuted; keep its original position
+                new_order.append(axis)
+        symmetrized += np.transpose(arr, new_order)
+    
+    # Average over all permutations
+    symmetrized /= len(all_permutations)
+    
+    return symmetrized
 
 def log(A, path):
     np.save(path + '.npy', A)
@@ -90,50 +138,73 @@ def denominator(mod_omega, E1, E2):
     arg[select] = 0.    
     return arg
 
-def omega_part_0(omega, smr, E1, E2):
+def omega_part_0(omega, smr, E1, E2, sign):
+    omega = omega * sign 
     mod_omega = omega + 1.j * smr
+
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return omega_freq * denom
 
-def omega_part_1(omega, smr, E1, E2):
+# def omega_part_0(omega, smr, E1, E2, sign):
+#     omega = omega * sign
+#     mod_omega = omega + 1.j * smr
+#     denom = denominator(mod_omega, E1, E2)
+#     omega_freq = 1/hbar * omega
+#     return omega_freq * denom
+
+def omega_part_1(omega, smr, E1, E2, sign):
+    omega = omega * sign
     omega_freq = 1/hbar * omega
     return omega_freq
 
-def omega_part_2(omega, smr, E1, E2):
+def omega_part_2(omega, smr, E1, E2, sign):
+    omega = omega * sign
     mod_omega = omega + 1.j * smr
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return omega_freq**2 * denom**2
 
-def omega_part_3(omega, smr, E1, E2):
-    mod_omega = omega + 1.j * smr
+def omega_part_3(omega, smr, E1, E2, sign):
+    omega = omega 
+    mod_omega = omega + 1.j * smr * sign
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return denom
 
-def omega_part_4(omega, smr, E1, E2):
+def omega_part_3_test(omega, smr, E1, E2, sign_omega, sign_smr):
+    omega = omega * sign_omega
+    mod_omega = omega + 1.j * smr * sign_smr
+    denom = denominator(mod_omega, E1, E2)
+    omega_freq = 1/hbar * omega
+    return denom
+
+def omega_part_4(omega, smr, E1, E2, sign):
+    omega = omega * sign
     mod_omega = omega + 1.j * smr
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return denom**2
 
-def omega_part_5(omega, smr, E1, E2):
+def omega_part_5(omega, smr, E1, E2, sign):
     return np.ones(omega.shape)
 
-def omega_part_6(omega, smr, E1, E2):
+def omega_part_6(omega, smr, E1, E2, sign):
+    omega = omega * sign
     mod_omega = omega + 1.j * smr
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return omega_freq * denom**2
 
-def omega_part_7(omega, smr, E1, E2):
+def omega_part_7(omega, smr, E1, E2, sign):
+    omega = omega * sign
     mod_omega = omega + 1.j * smr
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
     return omega_freq * denom**3
 
-def omega_part_8(omega, smr, E1, E2):
+def omega_part_8(omega, smr, E1, E2, sign):
+    omega = omega * sign
     mod_omega = omega + 1.j * smr
     denom = denominator(mod_omega, E1, E2)
     omega_freq = 1/hbar * omega
@@ -202,20 +273,181 @@ class Mag_sus_TR_odd(MultitermCalculator):
         self.terms.extend([Mag_sus_odd_1(**params_terms, **kwargs),
                            Mag_sus_odd_3(**params_terms, **kwargs)])
 
-class Mag_sus_even_1_formula(Formula):
+
+##########################################################################################
+
+
+class Mag_sus_occ_2_spin_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature
+        M = data_K.Q2.magnetic_dipole_spin
+        kron = data_K.Q2.kron
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1 * hbar * np.einsum('knmi, knml, knm -> knmil', O, M, kron)
+        summ += 1 * hbar * np.einsum('knmi, knml, knm -> knmil', M, O, kron)
+        summ *= -elementary_charge / ( hbar * speed_of_light)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_occ_2_spin(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_occ_2_spin_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+class Mag_sus_occ_2_orb_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature
+        M = data_K.Q2.magnetic_dipole_orb
+        kron = data_K.Q2.kron
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += np.einsum('knmi, knml, knm -> knmil', O, M, kron)
+        summ += np.einsum('knmi, knml, knm -> knmil', M, O, kron)
+        summ *= -elementary_charge / ( hbar * speed_of_light)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_occ_2_orb(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_occ_2_orb_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+class Mag_sus_inter_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature
+        M_orb = data_K.Q2.magnetic_dipole_orb
+        M_spin = data_K.Q2.magnetic_dipole_spin
+        M = M_orb + M_spin
+        antikron = data_K.Q2.anti_kron
+        invEdif = data_K.Q2.invEdif
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += np.einsum('knmi, knml, knm, knm -> knmil', M, M.conj(), antikron, invEdif)
+        summ *= -elementary_charge / ( hbar * speed_of_light)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_inter(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_inter_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+class Mag_sus_occ_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        if self.external_terms:
+            A = data_K.Q2.A_H
+        else:
+            A = data_K.Q2.A_H_internal
+        lev = data_K.Q2.levicivita
+        ddE = data_K.Q2.ddE
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += np.einsum('iab, lcd, knma, kmnc, kndb -> knmil', 
+                           lev, lev, A, A, ddE)
+        summ += - hbar**2/electron_mass *  np.einsum('iab, lcd, knma, kmnc, db -> knmil', 
+                                                   lev, lev, A, A, np.eye(3))
+        summ *= elementary_charge**2 / ( 4 * hbar**2 * speed_of_light**2 )
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_occ(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_occ_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+##########################################################################################
+
+class Mag_sus_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         A = data_K.Q2.A_H_internal
         ddV = data_K.Q2.gender2_velocity_internal
         lev = data_K.Q2.levicivita
-        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
-        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = data_K.Q2.magnetic_dipole_internal
         invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        # summ += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
-        # summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_even, M_even)
-        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_odd, M_odd)
+
+        # summ_even += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
+        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M, M)
 
         self.Imn = summ
         self.ndim = 2
@@ -224,35 +456,41 @@ class Mag_sus_even_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Mag_sus_even_1(DynamicCalculator):
+class Mag_sus_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        print(self.sign, type(self).__name__)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_even_1_formula
+        self.Formula = Mag_sus_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_0(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
 
-class Mag_sus_odd_1_formula(Formula):
+class Mag_sus_TR_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         A = data_K.Q2.A_H_internal
         ddV = data_K.Q2.gender2_velocity_internal
         lev = data_K.Q2.levicivita
-        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
-        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = data_K.Q2.magnetic_dipole_internal
         invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_even, M_odd)
-        summ += 1 * hbar * np.einsum('qmn, qnmk, qmnl -> qnmkl', invEdif, M_odd, M_even)
+
+        # summ_even += -1/16 * elementary_charge**2 * speed_of_light**(-2) * 1j * np.einsum('qnmdca, qmnb, kcd, lab -> qnmkl', ddV, A, lev, lev)
+        summ += 1 * hbar * np.einsum('qmn, qmnk, qnml -> qnmkl', invEdif, M, M)
 
         self.Imn = summ
         self.ndim = 2
@@ -261,17 +499,23 @@ class Mag_sus_odd_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Mag_sus_odd_1(DynamicCalculator):
+class Mag_sus_TR_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+
+        print(self.sign, type(self).__name__)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_odd_1_formula
+        self.Formula = Mag_sus_TR_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_0(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -295,6 +539,11 @@ class Mag_sus_even_2_formula(Formula):
 class Mag_sus_even_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Mag_sus_even_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -302,7 +551,7 @@ class Mag_sus_even_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_1(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_1(self.omega, self.smr_fixed_width ,E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
         if E1 - E2 < 1e-3:
@@ -317,13 +566,21 @@ class Mag_sus_even_3_formula(Formula):
         invEdif = data_K.Q2.invEdif
         dE = data_K.Q2.dE
         M_even = data_K.Q2.magnetic_dipole_internal_TR_even
-        A = data_K.Q2.A_H_internal
-        lev = data_K.Q2.levicivita
-
+        M = data_K.Q2.magnetic_dipole_internal
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
-        self.Imn = summ
+        summ_even = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ_odd = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+
+        summ_even += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
+        summ_even += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
+
+        summ_odd += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+        summ_odd += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+
+        summ = summ_even + summ_odd
+        summ_tr = -(summ_even - summ_odd).swapaxes(1,2)
+
+        self.Imn = summ + summ_tr
         self.ndim = 2
 
     def trace_ln(self, ik, inn1, inn2):
@@ -333,6 +590,11 @@ class Mag_sus_even_3_formula(Formula):
 class Mag_sus_even_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Mag_sus_even_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -340,7 +602,7 @@ class Mag_sus_even_3(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_2(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_2(self.omega, self.smr_fixed_width ,E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -351,14 +613,22 @@ class Mag_sus_odd_3_formula(Formula):
         super().__init__(data_K, **parameters)
         invEdif = data_K.Q2.invEdif
         dE = data_K.Q2.dE
-        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
-        A = data_K.Q2.A_H_internal
-        lev = data_K.Q2.levicivita
+        M = data_K.Q2.magnetic_dipole_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
-        summ += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
-        self.Imn = summ
+        summ_even = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ_odd = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+
+        summ_even += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
+        summ_even += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_even, A, lev)
+
+        summ_odd += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qma, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+        summ_odd += -1/4 * elementary_charge * hbar * 1/speed_of_light * np.einsum('qmn, qna, qnmk, qmnb, lab -> qnmkl', invEdif, dE, M_odd, A, lev)
+
+        summ = summ_even + summ_odd
+        summ_tr = -(summ_even - summ_odd).swapaxes(1,2)
+
+        self.Imn = summ + summ_tr
         self.ndim = 2
 
     def trace_ln(self, ik, inn1, inn2):
@@ -368,14 +638,19 @@ class Mag_sus_odd_3_formula(Formula):
 class Mag_sus_odd_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Mag_sus_odd_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_2(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_2(self.omega, self.smr_fixed_width ,E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -404,20 +679,21 @@ class Gamma_TR_odd(MultitermCalculator):
         self.terms.extend([Gamma_odd_1(**params_terms, **kwargs),
                            Gamma_odd_2(**params_terms, **kwargs)])
 
+#################
 
-class Gamma_even_1_formula(Formula):
+class Gamma_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         ddV = data_K.Q2.gender2_velocity_internal
         A = data_K.Q2.A_H_internal
         lev = data_K.Q2.levicivita
-        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = data_K.Q2.magnetic_dipole_internal
         Q_P = data_K.Q2.electric_quadrupole_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
-        summ += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
-        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M_even, Q_P)
+        
+        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M, Q_P)
+        
         self.Imn = summ
         self.ndim = 3
 
@@ -425,33 +701,43 @@ class Gamma_even_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Gamma_even_1(DynamicCalculator):
+class Gamma_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Gamma_even_1_formula
+        self.Formula = Gamma_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
 
 
-class Gamma_odd_1_formula(Formula):
+class Gamma_TR_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         ddV = data_K.Q2.gender2_velocity_internal
         A = data_K.Q2.A_H_internal
         lev = data_K.Q2.levicivita
-        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
         Q_P = data_K.Q2.electric_quadrupole_internal
+        M = data_K.Q2.magnetic_dipole_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += 1 * np.einsum('knmi, kmnjl -> knmijl', M_odd, Q_P)
+        
+        # summ_even += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
+        # summ_even += -1/16 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbal, kmnj, iab -> knmijl', ddV, A, lev)
+        
+        summ -= 1 * np.einsum('kmni, knmjl -> knmijl', M, Q_P)
+
         self.Imn = summ
         self.ndim = 3
 
@@ -459,17 +745,22 @@ class Gamma_odd_1_formula(Formula):
         return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
 
 
-class Gamma_odd_1(DynamicCalculator):
+class Gamma_TR_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Gamma_odd_1_formula
+        self.Formula = Gamma_TR_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_odd
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -480,15 +771,24 @@ class Gamma_even_2_formula(Formula):
         super().__init__(data_K, **parameters)
         dE = data_K.Q2.dE
         M_even = data_K.Q2.magnetic_dipole_internal_TR_even
-        A = data_K.Q2.A_H_internal
+        M = data_K.Q2.magnetic_dipole_internal
+        summ_even = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ_odd = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_even, A)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_even, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_even, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_even, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_even, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_odd, A)
 
-        self.Imn = summ
+        summ = summ_even + summ_odd
+        summ_tr = (summ_even - summ_odd).swapaxes(1,2)
+
+        self.Imn = summ + summ_tr
         self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
@@ -498,6 +798,11 @@ class Gamma_even_2_formula(Formula):
 class Gamma_even_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Gamma_even_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -505,7 +810,7 @@ class Gamma_even_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_4(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_4(self.omega, self.smr_fixed_width ,E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -515,16 +820,26 @@ class Gamma_odd_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         dE = data_K.Q2.dE
-        M_odd = data_K.Q2.magnetic_dipole_internal_TR_odd
-        A = data_K.Q2.A_H_internal
+        M_even = data_K.Q2.magnetic_dipole_internal_TR_even
+        M = data_K.Q2.magnetic_dipole_internal
+        summ_even = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ_odd = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_even, A)
+        summ_even += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_even, A)
 
-        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_odd, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_odd, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_odd, A)
-        summ += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('kmj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('knj, knmi, kmnl -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('kml, knmi, kmnj -> knmijl', dE, M_odd, A)
+        summ_odd += 1/4 * elementary_charge * 1j * np.einsum('knl, knmi, kmnj -> knmijl', dE, M_odd, A)
 
-        self.Imn = summ
+
+        summ = summ_even + summ_odd
+        summ_tr = (summ_even - summ_odd).swapaxes(1,2)
+
+        self.Imn = summ - summ_tr
         self.ndim = 3
 
     def trace_ln(self, ik, inn1, inn2):
@@ -534,14 +849,19 @@ class Gamma_odd_2_formula(Formula):
 class Gamma_odd_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Gamma_odd_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_4(self.omega, self.smr_fixed_width ,E1, E2)
+        return omega_part_4(self.omega, self.smr_fixed_width ,E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -568,6 +888,11 @@ class Gamma_even_3_formula(Formula):
 class Gamma_even_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Gamma_even_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -575,7 +900,7 @@ class Gamma_even_3(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
         if E1 - E2 < 1e-3:
@@ -590,18 +915,20 @@ class Gamma_even_3(DynamicCalculator):
 class Beta_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        # E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        Q_M = data_K.Q2.magnetic_quadrupole_internal
+        A = data_K.Q2.A_H_internal
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += -1/8 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('km, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
-        summ += 1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kn, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
-        summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/8 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('km, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
+        # summ += 1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kn, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
         summ += 1 * elementary_charge * np.einsum('knmij, kmnl -> knmijl', Q_M, A)
-                
+        
         self.Imn = summ
         self.ndim = 3
 
@@ -612,6 +939,11 @@ class Beta_1_formula(Formula):
 class Beta_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Beta_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -619,7 +951,53 @@ class Beta_1(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+
+class Beta_TR_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        # E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        Q_M = data_K.Q2.magnetic_quadrupole_internal
+        A = data_K.Q2.A_H_internal
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        # summ += -1/8 * elementary_charge**2 * 1/speed_of_light * np.einsum('knmbaj, kmnl, iab -> knmijl', ddV, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('km, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
+        # summ += 1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('kn, knmbaj, kmnl, iab -> knmijl', E, ddA, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kma, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, knpb, kpmj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        # summ += -1/24 * elementary_charge**2 * 1/hbar * 1/speed_of_light * np.einsum('kna, kpm, kpn, kpmb, knpj, kmnl, iab -> knmijl', dE, anti_kron, anti_kron, A, A, A, lev)
+        summ += 1 * elementary_charge * np.einsum('kmnij, knml -> knmijl', Q_M, A)
+        
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Beta_TR_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Beta_TR_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -644,6 +1022,11 @@ class Beta_2_formula(Formula):
 class Beta_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Beta_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -651,7 +1034,7 @@ class Beta_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
         if E1 - E2 < 1e-3:
@@ -683,6 +1066,11 @@ class Delta_1_formula(Formula):
 class Delta_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -690,10 +1078,11 @@ class Delta_1(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+        
 
 class Delta_2_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
@@ -714,6 +1103,11 @@ class Delta_2_formula(Formula):
 class Delta_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -721,7 +1115,7 @@ class Delta_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_6(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_6(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -748,6 +1142,11 @@ class Delta_3_formula(Formula):
 class Delta_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -755,10 +1154,11 @@ class Delta_3(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_7(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_7(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
 
 class Delta_4_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
@@ -778,6 +1178,11 @@ class Delta_4_formula(Formula):
 class Delta_4(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_4_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -785,7 +1190,43 @@ class Delta_4(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Delta_TR_4_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1 * elementary_charge * np.einsum('knmlj, kmni -> knmijl', Q_M, A)
+
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Delta_TR_4(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Delta_TR_4_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -826,6 +1267,11 @@ class Delta_5_formula(Formula):
 class Delta_5(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_5_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -833,7 +1279,7 @@ class Delta_5(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -859,6 +1305,11 @@ class Delta_6_formula(Formula):
 class Delta_6(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Delta_6_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -866,7 +1317,7 @@ class Delta_6(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
         if E1 - E2 < 1e-3:
@@ -887,15 +1338,16 @@ class Pi_1_formula(Formula):
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
         summ += 1/6 * elementary_charge * np.einsum('qmnjlk, qnmi -> qnmijlk', O_P, A)
 
-        jlk = summ
-        jkl = jlk.swapaxes(-1,-2)
-        ljk = summ.swapaxes(-2,-3)
-        lkj = ljk.swapaxes(-1,-2)
-        klj = summ.swapaxes(-1,-3)
-        kjl = klj.swapaxes(-1,-2)
-        summ = jlk + jkl + ljk + lkj + klj + kjl
+        # jlk = summ
+        # jkl = jlk.swapaxes(-1,-2)
+        # ljk = summ.swapaxes(-2,-3)
+        # lkj = ljk.swapaxes(-1,-2)
+        # klj = summ.swapaxes(-1,-3)
+        # kjl = klj.swapaxes(-1,-2)
+        # summ = jlk + jkl + ljk + lkj + klj + kjl
 
-        self.Imn = summ
+        self.Imn = summ#pi - pi.swapaxes(-1,-3)
+
         self.ndim = 4
 
     def trace_ln(self, ik, inn1, inn2):
@@ -905,6 +1357,11 @@ class Pi_1_formula(Formula):
 class Pi_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Pi_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -912,7 +1369,51 @@ class Pi_1(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Pi_TR_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1/6 * elementary_charge * np.einsum('qnmjlk, qmni -> qnmijlk', O_P, A)
+
+        # jlk = summ
+        # jkl = jlk.swapaxes(-1,-2)
+        # ljk = summ.swapaxes(-2,-3)
+        # lkj = ljk.swapaxes(-1,-2)
+        # klj = summ.swapaxes(-1,-3)
+        # kjl = klj.swapaxes(-1,-2)
+        # summ = jlk + jkl + ljk + lkj + klj + kjl
+
+        self.Imn = summ
+        self.ndim = 4
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Pi_TR_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Pi_TR_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -945,6 +1446,11 @@ class Pi_2_formula(Formula):
 class Pi_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Pi_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -952,7 +1458,7 @@ class Pi_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_8(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_8(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -989,6 +1495,11 @@ class Pi_3_formula(Formula):
 class Pi_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Pi_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -996,7 +1507,7 @@ class Pi_3(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1013,10 +1524,10 @@ class Sigma_1_formula(Formula):
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qnmijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmijl, qmnk -> qnmijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjik, qmnl -> qnmijlk', ddA, A)
-        summ += -1/16 * elementary_charge**2 * np.einsum('qnmjil, qmnk -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmijl, qmnk -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmjik, qmnl -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmjil, qmnk -> qnmijlk', ddA, A)
         summ += 1 * np.einsum('qnmij, qmnkl -> qnmijlk', Q_P, Q_P)
 
         self.Imn = summ
@@ -1029,6 +1540,11 @@ class Sigma_1_formula(Formula):
 class Sigma_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Sigma_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -1036,7 +1552,47 @@ class Sigma_1(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Sigma_TR_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmijk, qmnl -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmijl, qmnk -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmjik, qmnl -> qnmijlk', ddA, A)
+        # summ += -1/16 * elementary_charge**2 * np.einsum('qnmjil, qmnk -> qnmijlk', ddA, A)
+        summ += 1 * np.einsum('qmnij, qnmkl -> qnmijlk', Q_P, Q_P)
+
+        self.Imn = summ
+        self.ndim = 4
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Sigma_TR_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Sigma_TR_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1063,6 +1619,11 @@ class Sigma_2_formula(Formula):
 class Sigma_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Sigma_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
@@ -1070,7 +1631,7 @@ class Sigma_2(DynamicCalculator):
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_4(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1101,14 +1662,19 @@ class Capital_Gamma_1_formula(Formula):
 class Capital_Gamma_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_6(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_6(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1133,14 +1699,19 @@ class Capital_Gamma_2_formula(Formula):
 class Capital_Gamma_2(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_2_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_0(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1164,14 +1735,55 @@ class Capital_Gamma_3_formula(Formula):
 class Capital_Gamma_3(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_3_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Capital_Gamma_TR_3_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += 1 * np.einsum('knml, kmnij -> knmijl', M, Q_P)
+
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Capital_Gamma_TR_3(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Capital_Gamma_TR_3_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)
@@ -1197,14 +1809,19 @@ class Capital_Gamma_4_formula(Formula):
 class Capital_Gamma_4(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Capital_Gamma_4_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
-        self.transformTR = transform_odd
+        self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
         if E1 - E2 < 1e-3:
@@ -1218,7 +1835,7 @@ class Capital_Gamma_4(DynamicCalculator):
 ##############################################################
 
 
-class Omega_formula_1(Formula):
+class Omega_1_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
@@ -1236,14 +1853,127 @@ class Omega_formula_1(Formula):
 class Omega_1(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Omega_formula_1
+        self.Formula = Omega_1_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
-        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2)
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Omega_TR_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1 * elementary_charge * np.einsum('qmnijl, qnmk -> qnmijlk', O_P, A)
+
+        self.Imn = summ
+        self.ndim = 4
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Omega_TR_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Omega_TR_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class A4_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.A_H_internal
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1 * elementary_charge * np.einsum('qnmi, qnmj, qnml, qnmk -> qnmijlk', A, A, A, A)
+
+        self.Imn = summ
+        self.ndim = 4
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class A4(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = A4_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class A4_TR_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.A_H_internal
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1 * elementary_charge * np.einsum('qmni, qmnj, qmnl, qmnk -> qnmijlk', A, A, A, A)
+
+        self.Imn = summ
+        self.ndim = 4
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class A4_TR(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign_omega = 1
+        self.sign_smr = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = A4_TR_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_3_test(self.omega, self.smr_fixed_width, E1, E2, self.sign_omega, self.sign_smr)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)

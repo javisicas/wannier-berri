@@ -4,10 +4,11 @@ from scipy.constants import elementary_charge, hbar, electron_mass, physical_con
 from ..formula.formula import Matrix_GenDer_ln
 from ..formula.covariant import DerDcov, Der2Dcov, Der2A, Dcov
 
+    
 class Q2_K:
     def __init__(self, data_K):
-        self.eV_to_J = 1.602176634e-19
-        self.A_to_m = 10e-10
+        self.eV_to_J = 1
+        self.A_to_m = 1
         
         self.data_K = data_K
         self.eta = 0.01
@@ -15,6 +16,55 @@ class Q2_K:
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
+
+    def symmetrize_axes(self, arr, axes_to_symmetrize):
+        from itertools import permutations
+        """
+        Symmetrize the array over the specified three axes by averaging over all permutations.
+        
+        Parameters:
+        arr (numpy.ndarray): Input array to symmetrize.
+        axes_to_symmetrize (list of int): List of three axes to symmetrize.
+        
+        Returns:
+        numpy.ndarray: Symmetrized array.
+        """
+        # Validate input
+        if len(axes_to_symmetrize) != 3:
+            raise ValueError("Exactly three axes must be specified for symmetrization.")
+        if len(set(axes_to_symmetrize)) != 3:
+            raise ValueError("The axes to symmetrize must be distinct.")
+        if any(axis >= arr.ndim or axis < -arr.ndim for axis in axes_to_symmetrize):
+            raise ValueError("One or more specified axes are out of bounds for the array.")
+        
+        # Convert negative axes to positive for easier handling
+        axes_to_symmetrize = [axis if axis >= 0 else arr.ndim + axis for axis in axes_to_symmetrize]
+        
+        # Generate all permutations of the specified axes
+        all_permutations = list(permutations(axes_to_symmetrize))
+        
+        # Initialize the symmetrized array
+        symmetrized = np.zeros_like(arr)
+        
+        # For each permutation, transpose the array and add to the sum
+        for perm in all_permutations:
+            # Construct the new axis order:
+            # - All axes not in `axes_to_symmetrize` remain in their original positions.
+            # - The axes in `axes_to_symmetrize` are permuted according to `perm`.
+            new_order = []
+            for axis in range(arr.ndim):
+                if axis in axes_to_symmetrize:
+                    # This axis is being permuted; find its new position in `perm`
+                    new_order.append(perm[axes_to_symmetrizendex(axis)])
+                else:
+                    # This axis is not being permuted; keep its original position
+                    new_order.append(axis)
+            symmetrized += np.transpose(arr, new_order)
+        
+        # Average over all permutations
+        symmetrized /= len(all_permutations)
+        
+        return symmetrized
 
     @cached_property
     def levicivita(self):
@@ -71,7 +121,7 @@ class Q2_K:
         E = self.E_K
         A = self.A_H
         dE = self.dE # knma
-        dEnm = np.zeros((dE.shape[0],dE.shape[1],dE.shape[1],dE.shape[2]))
+        dEnm = np.zeros((dE.shape[0],dE.shape[1],dE.shape[1],dE.shape[2]), dtype=complex)
         rows, cols = np.diag_indices(dE.shape[1])
         dEnm[:,rows,cols,:] = dE
         V = dEnm + 1j*(E[:,:,None,None] - E[:,None,:,None])* A
@@ -96,7 +146,7 @@ class Q2_K:
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
         for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
                         (-1,0,2,1), (-1,1,0,2), (-1,2,1,0)]:
-            Omega[...,l] += s * gender_A[:,:,:,a,b] 
+            Omega[...,l] += s * gender_A[:,:,:,b,a] 
         return Omega 
 
     @cached_property
@@ -107,7 +157,7 @@ class Q2_K:
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
         for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
                         (-1,0,2,1), (-1,1,0,2), (-1,2,1,0)]:
-            Omega[...,l] += s * gender_A[:,:,:,a,b] 
+            Omega[...,l] += s * gender_A[:,:,:,b,a] 
         return Omega 
 
     @cached_property
@@ -136,6 +186,32 @@ class Q2_K:
 #################################################################
 
     @cached_property
+    def magnetic_dipole_spin(self):
+        # Eq (D2), off diag
+        try:
+            S = self.data_K.Xbar('SS') * hbar/2         
+        except:
+            S = np.zeros(V.shape)
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> kmnl', S)
+        return summ
+
+    @cached_property
+    def magnetic_dipole_orb(self):
+        # Eq (D2), off diag
+        V = self.velocity
+        dE = self.dE
+        A = self.A_H
+        lev = self.levicivita
+        anti_kron = self.anti_kron
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        return summ
+
+    @cached_property
     def magnetic_dipole(self):
         # Eq (D2), off diag
         V = self.velocity
@@ -148,7 +224,7 @@ class Q2_K:
         except:
             S = np.zeros(V.shape)
 
-        summ = np.zeros((V.shape), dtype=complex) # kmnl
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
         summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
@@ -157,10 +233,11 @@ class Q2_K:
         return summ
 
     @cached_property
-    def magnetic_dipole_internal_TR_even(self):
-        V = self.velocity_internal
+    def magnetic_dipole(self):
+        # Eq (D2), off diag
+        V = self.velocity
         dE = self.dE
-        A = self.A_H_internal
+        A = self.A_H
         lev = self.levicivita
         anti_kron = self.anti_kron
         try:
@@ -168,15 +245,16 @@ class Q2_K:
         except:
             S = np.zeros(V.shape)
 
-        summ = np.zeros((V.shape), dtype=complex) # kmnl
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
         summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> kmnl', dE, A, lev)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> kmnl', S)
         return summ
 
     @cached_property
-    def magnetic_dipole_internal_TR_odd(self):
+    def magnetic_dipole_internal(self):
         V = self.velocity_internal
         dE = self.dE
         A = self.A_H_internal
@@ -187,10 +265,13 @@ class Q2_K:
         except:
             S = np.zeros(V.shape)
 
-        summ = np.zeros((V.shape), dtype=complex) # kmnl
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> kmnl', dE, A, lev)
+        summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> kmnl', dE, A, lev)
         summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * S
         return summ
-
 
     @cached_property
     def electric_quadrupole(self):
@@ -243,27 +324,9 @@ class Q2_K:
         summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
         return summ
 
-    @cached_property
-    def magnetic_quadrupole_internal_TR_even(self):
-        A = self.A_H_internal
-        dA = self.gender_A_H_internal
-        V = self.velocity_internal
-        dE = self.dE
-        ddE = self.ddE
-        lev = self.levicivita
-        anti_kron = self.anti_kron
-        try:
-            S = self.S         
-        except:
-            S = np.zeros(V.shape)
-        
-        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
-        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
-        return summ
 
     @cached_property
-    def magnetic_quadrupole_internal_TR_odd(self):
+    def magnetic_quadrupole_internal(self):
         A = self.A_H_internal
         dA = self.gender_A_H_internal
         V = self.velocity_internal
@@ -277,20 +340,22 @@ class Q2_K:
             S = np.zeros(V.shape)
         
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
-        summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        # summ += 1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('klmja, klm, knl, knlb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
+        # summ += -1/12 * elementary_charge * 1/speed_of_light * 1j * np.einsum('knlja, klm, knl, klmb, iab -> knmij', dA, anti_kron, anti_kron, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, knsa, klmj, kslb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('klm, kns, ksl, ksla, klmj, knsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, klsa, knlj, ksmb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
         summ += 1/12 * elementary_charge * 1/speed_of_light * np.einsum('kls, knl, ksm, ksma, knlj, klsb, iab -> knmij', anti_kron, anti_kron, anti_kron, A, A, V, lev)
-        summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knb, knmja, iab -> knmij', dE, dA, lev)
-        summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmaj, knmb, iab -> knmij', ddE, A, lev)
-        summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knaj, knmb, iab -> knmij', ddE, A, lev)
+        # summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmb, knmja, iab -> knmij', dE, dA, lev)
+        # summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knb, knmja, iab -> knmij', dE, dA, lev)
+        # summ += -1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('kmaj, knmb, iab -> knmij', ddE, A, lev)
+        # summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * 1j * np.einsum('knaj, knmb, iab -> knmij', ddE, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('klb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, klm, knl, klma, knlj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
         summ += 1/12 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, klm, knl, knla, klmj, iab -> knmij', dE, anti_kron, anti_kron, A, A, lev)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('klmi, klm, knl, knlj -> knmij', S, anti_kron, anti_kron, A)
+        summ += 1/2 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('knli, klm, knl, klmj -> knmij', S, anti_kron, anti_kron, A)
         return summ
 
     @cached_property
@@ -321,10 +386,11 @@ class Q2_K:
         anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
-        summ += -1/36 * elementary_charge * np.einsum('qmnklj -> qnmjlk', ddA)
+        # summ += -1/36 * elementary_charge * np.einsum('qmnklj -> qnmjlk', ddA)
         summ += -1/72 * elementary_charge * 1j * np.einsum('qmsjl, qns, qsm, qsnk -> qnmjlk', dA, anti_kron, anti_kron, A)
         summ += 1/72 * elementary_charge * 1j * np.einsum('qsnkl, qns, qsm, qmsj -> qnmjlk', dA, anti_kron, anti_kron, A)
         summ += 1/36 * elementary_charge * np.einsum('qmp, qps, qsn, qmpj, qsnk, qpsl -> qnmjlk', anti_kron, anti_kron, anti_kron, A, A, A)
+        
         jlk = summ
         jkl = jlk.swapaxes(-1,-2)
         ljk = summ.swapaxes(-2,-3)
@@ -332,6 +398,8 @@ class Q2_K:
         klj = summ.swapaxes(-1,-3)
         kjl = klj.swapaxes(-1,-2)
         return jlk + jkl + ljk + lkj + klj + kjl
+
+        # return self.symmetrize_axes(summ, [-3, -2, -1])
 
 ####################################################################
 # GENERELAZIED DERIVATIVES OF A

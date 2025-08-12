@@ -26,7 +26,7 @@ Ang_SI = angstrom
 
 class DynamicCalculator(Calculator, abc.ABC):
 
-    def __init__(self, Efermi=None, omega=None, kBT=0, smr_fixed_width=0.1, smr_type='Lorentzian',
+    def __init__(self, Efermi=None, omega=None, kBT=0, smr_fixed_width=0.05, smr_type='Lorentzian',
                  kwargs_formula=None, dtype=complex, **kwargs):
 
         if kwargs_formula is None:
@@ -328,6 +328,41 @@ class ShiftCurrent(DynamicCalculator):
         delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
         delta_arg_21 = E2 - E1 - self.omega
         return self.smear(delta_arg_12) + self.smear(delta_arg_21)
+
+
+class ShiftCurrent2Formula(Formula):
+
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        A_H = data_K.A_H if self.external_terms else data_K.A_H_internal
+        A_gen_der = data_K.Q2.gender_A_H if self.external_terms else data_K.Q.gender_A_H_internal
+
+        # here we take the -real part to eliminate the 1j factor in the final factor
+        Imn = - cached_einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
+        Imn += Imn.swapaxes(4, 5)  # symmetrize b and c
+
+        self.Imn = Imn
+        self.ndim = 3
+        self.transformTR = transform_ident
+        self.transformInv = transform_odd
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class ShiftCurrent2(DynamicCalculator):
+
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=float, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = ShiftCurrent2Formula
+        self.constant_factor = factors.factor_shift_current
+
+    def factor_omega(self, E1, E2):
+        delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
+        delta_arg_21 = E2 - E1 - self.omega
+        return self.smear(delta_arg_12) + self.smear(delta_arg_21)
+
 
 
 # ===================
