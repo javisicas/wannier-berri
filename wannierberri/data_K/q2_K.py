@@ -1,17 +1,21 @@
 from functools import cached_property
 import numpy as np
-from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
+# from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
 from ..formula.formula import Matrix_GenDer_ln
 from ..formula.covariant import DerDcov, Der2Dcov, Der2A, Dcov
 
+speed_of_light = 3e10 #cm/s
+elementary_charge = 4.8032e-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546e-27 #cm^2 g s^-1
+electron_mass = 9.1093837139e-28 #g
     
 class Q2_K:
     def __init__(self, data_K):
-        self.eV_to_J = 1
-        self.A_to_m = 1
+        self.eV_to_erg = 1.602176633e-12
+        self.A_to_cm = 10e-8
         
         self.data_K = data_K
-        self.eta = 0.01
+        self.eta = 0.04
         self.dEnm_threshold = 1e-3
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
@@ -76,17 +80,17 @@ class Q2_K:
 
     @cached_property
     def E_K(self):
-        return self.data_K.E_K * self.eV_to_J
+        return self.data_K.E_K * self.eV_to_erg
 
     @cached_property
     def dE(self):
-        return np.diagonal(self.data_K.Xbar('Ham', 1), axis1=1, axis2=2).transpose(0,2,1) * self.eV_to_J * self.A_to_m
+        return np.diagonal(self.data_K.Xbar('Ham', 1), axis1=1, axis2=2).transpose(0,2,1) * self.eV_to_erg * self.A_to_cm
 
     @cached_property
     def ddE(self):
-        # PhysRevB.75.195121
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+        # PhysRevB.75.195121 28
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
         sc_eta = 0.04
         E_K = self.E_K
@@ -94,26 +98,26 @@ class Q2_K:
         dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
         D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
 
-        dHD_part = np.einsum('knma, kmnb -> knmab', dH, D_H_Pval)
+        dHD_part = np.einsum('knla, klmb -> knmab', dH, D_H_Pval)
         ddE = ddH + dHD_part + np.conjugate(dHD_part.swapaxes(1,2))
         return np.diagonal(ddE, axis1=1, axis2=2).transpose(0,3,1,2) 
 
     @cached_property
     def invEdif(self):
-        return self.data_K.dEig_inv / self.eV_to_J
+        return self.data_K.dEig_inv / self.eV_to_erg
 
-    @cached_property
-    def S(self):
-        return self.data_K.Xbar('SS') * hbar/2
+    # @cached_property
+    # def S(self):
+    #     return self.data_K.Xbar('SS') * hbar/2
 
     @cached_property
     def A_H(self):
-        return self.data_K.A_H * self.A_to_m
+        return self.data_K.A_H * self.A_to_cm
 
     @cached_property
     def A_H_internal(self):
         A_int = self.data_K.A_H_internal
-        return A_int * self.A_to_m
+        return A_int * self.A_to_cm
 
     @cached_property
     def velocity(self):
@@ -207,8 +211,22 @@ class Q2_K:
         anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
-        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kpna, kmpb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        # summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmp, kmpa, kpnb, lab -> kmnl', anti_kron, A, V, lev)
+        return summ
+
+    @cached_property
+    def magnetic_dipole_inter(self):
+        # Eq (D2), off diag
+        dE = self.dE
+        A = self.A_H
+        M_spin = self.magnetic_dipole_spin
+        M_orb = self.magnetic_dipole_orb
+        lev = self.levicivita
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += M_spin + M_orb
+        summ += elementary_charge / (2 * speed_of_light) * 1/hbar * np.einsum('knb, knma, lab -> knml', dE, A, lev)
         return summ
 
     @cached_property
@@ -413,9 +431,9 @@ class Q2_K:
 
     @cached_property
     def dDelta(self):
-        D = self.data_K.D_H * self.A_to_m
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+        D = self.data_K.D_H * self.A_to_cm
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
         Edif = self.Edif
         anti_kron = self.anti_kron
 
@@ -434,10 +452,10 @@ class Q2_K:
 
     @cached_property
     def gender_A_H(self):
-        A_bar = self.data_K.Xbar('AA') * self.A_to_m
-        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_m**2
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+        A_bar = self.data_K.Xbar('AA') * self.A_to_cm
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif
@@ -464,8 +482,8 @@ class Q2_K:
 
     @cached_property
     def gender_A_H_internal(self):
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif
@@ -485,10 +503,10 @@ class Q2_K:
     @cached_property
     def gender2_A_H_internal(self):
         # TB: A_bar -> 0, only term is gender of eq 32
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_J * self.A_to_m
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_J * self.A_to_m**2
-        dddH = self.data_K.Xbar('Ham', 3) * self.eV_to_J * self.A_to_m**3
-        D = self.data_K.D_H * self.A_to_m
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
+        dddH = self.data_K.Xbar('Ham', 3) * self.eV_to_erg * self.A_to_cm**3
+        D = self.data_K.D_H * self.A_to_cm
 
         Edif = self.Edif
         Delta = self.Delta # or self.dE_dif

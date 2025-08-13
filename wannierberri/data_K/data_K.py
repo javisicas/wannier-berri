@@ -14,8 +14,6 @@
 import numpy as np
 import abc
 from functools import cached_property
-
-from wannierberri.utility import cached_einsum
 from ..parallel import pool
 from ..system.system import System
 from ..grid import TetraWeights, TetraWeightsParal, get_bands_in_range, get_bands_below_range
@@ -23,8 +21,18 @@ from .. import formula
 from ..grid import KpointBZparallel, KpointBZtetra
 from ..symmetry.point_symmetry import transform_ident, transform_odd
 from .sdct_K import SDCT_K
+from scipy.constants import hbar, c, e, m_e
+c_light = c
 from .q2_K import Q2_K
 
+c = 3e10 #cm/s
+c_light = 3e10 #cm/s
+e = 4.8032e-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546e-27 #cm^2 g s^-1
+m_e = 9.1093837139e-28 #g
+
+eV_to_erg = 1.602176633e-12
+A_to_cm = 10e-8
 
 def _rotate_matrix(X):
     return X[1].T.conj().dot(X[0]).dot(X[1])
@@ -128,6 +136,7 @@ class Data_K(System, abc.ABC):
         self.dK = dK
         self._bar_quantities = {}
         self._covariant_quantities = {}
+
 
     ###########################################
     #   Now the **_R objects are evaluated only on demand
@@ -243,7 +252,7 @@ class Data_K(System, abc.ABC):
 
     @cached_property
     def delE_K(self):
-        delE_K = cached_einsum("klla->kla", self.Xbar('Ham', 1))
+        delE_K = np.einsum("klla->kla", self.Xbar('Ham', 1) * eV_to_erg * A_to_cm)
         check = np.abs(delE_K).imag.max()
         if check > 1e-10:
             raise RuntimeError(f"The band derivatives have considerable imaginary part: {check}")
@@ -332,7 +341,7 @@ class Data_K(System, abc.ABC):
 
     @cached_property
     def D_H(self):
-        return -self.Xbar('Ham', 1) * self.dEig_inv[:, :, :, None]
+        return -self.Xbar('Ham', 1) * eV_to_erg * A_to_cm * self.dEig_inv[:, :, :, None]
 
     @cached_property
     def A_H(self):
@@ -349,8 +358,231 @@ class Data_K(System, abc.ABC):
         """returns the SDC term"""
         return SDCT_K(self)
 
-#########################################################################################################################################
 
+#########################################################################################################################################
+    @cached_property
+    def levi_civita(self):
+        eps = np.zeros((3, 3, 3), dtype=int)
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    if len({i, j, k}) < 3:
+                        eps[i, j, k] = 0
+                    elif (i, j, k) in [(0, 1, 2), (1, 2, 0), (2, 0, 1)]:
+                        eps[i, j, k] = 1
+                    else:
+                        eps[i, j, k] = -1
+        return eps
+    
+    @cached_property
+    def D_H_P(self):
+        sc_eta = 0.04
+        D_H = self.D_H
+        E_K = self.E_K * eV_to_erg * eV_to_erg
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
+        V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
+        return -V_H * dEig_inv_Pval[:, :, :, None]
+        
+    @cached_property
+    def A_H_P(self):
+        '''Generalized Berry connection matrix'''
+        D_H_Pval = self.D_H_P
+        return self.A_H * A_to_cm #self.Xbar('AA') + 1j * D_H_Pval
+        
+    @cached_property
+    def velocity(self):
+        """returns the velocity matrix elements in the Bloch basis"""
+        E_K = self.E_K * eV_to_erg
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
+        A_H_Pval = self.A_H_P
+        dE_dk = np.einsum('knni->kni', V_H)  # (nk, nb, dim)
+        delta = np.eye(E_K.shape[1])[None, :, :, None]  # (1, nb, nb, 1)
+        
+        t1 = np.zeros(V_H.shape, dtype=complex)
+        t1 += delta * dE_dk[:, None, :, :] / hbar  # (nk, nb, nb, dim)
+        
+        t2 = np.zeros(V_H.shape, dtype=complex)
+        t2 += 1j/hbar*dEig[:, :, :, None] * A_H_Pval
+        return t1 + t2 
+
+    @cached_property
+    def Magnetization(self):
+        eps = self.levi_civita
+        Vel = self.velocity
+        A_H_Pval = self.A_H_P
+        V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
+        dE_dk = np.einsum('knni->kni', V_H)  # (nk, nb, dim)
+        dE_dk_sum = dE_dk[:, :, None,:] + dE_dk[:, None, :,:]
+        S = self.Xbar('SS') * hbar/2 
+
+        M = np.zeros(V_H.shape, dtype=complex)
+        M += e/(4*c_light)*(np.einsum('kmsb,ksna,lab->kmnl', Vel, A_H_Pval, eps)+ np.einsum('kmsa,ksnb,lab->kmnl', A_H_Pval, Vel, eps)+1/hbar*np.einsum('kmnb,kmna,lab->kmnl',dE_dk_sum,A_H_Pval,eps))+e/(m_e*c_light)*S
+        return M
+        
+    @cached_property
+    def ddE(self):
+        """returns the two derivatives on the energy in the Bloch basis"""
+        V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
+        D_H_Pval = self.D_H_P
+        A_H_Pval = self.A_H_P
+        del2E_H = self.Xbar('Ham', 2) * eV_to_erg * A_to_cm**2
+        HD = np.einsum('knla,klmb->knmab', V_H, D_H_Pval)
+
+        ddE = np.zeros(del2E_H.shape, dtype=complex)
+        ddE += del2E_H+HD+np.conj(HD).swapaxes(1, 2)
+        return ddE
+
+    ## RECHECK!!!
+    @cached_property
+    def BerryCurvature(self):
+        """returns the Berry curvature as in eqn. (27) of 10.1103/PhysRevB.74.195118."""
+        Omega_bar = self.Xbar('AA', 1) - self.Xbar('AA', 1).swapaxes(-1, -2)
+        D_H_Pval =  self.D_H_P
+        A_H_Pval = self.A_H_P
+
+        t2 = np.zeros((A_H_Pval.shape[0],A_H_Pval.shape[1],A_H_Pval.shape[1],A_H_Pval.shape[2],A_H_Pval.shape[2]))
+        t2 = (-np.einsum('knla,klmb->knmab',D_H_Pval,A_H_Pval)+
+              np.einsum('knlb,klma->knmab',A_H_Pval,D_H_Pval) + 
+              np.einsum('knlb,klma->knmab',D_H_Pval,A_H_Pval)-
+              np.einsum('knla,klmb->knmab',A_H_Pval,D_H_Pval) -
+              1j*np.einsum('knla,klmb->knmab',D_H_Pval,D_H_Pval) +
+              1j*np.einsum('knlb,klma->knmab',D_H_Pval,D_H_Pval)
+             )
+        BC = np.zeros((A_H_Pval.shape[0],A_H_Pval.shape[1],A_H_Pval.shape[1],A_H_Pval.shape[2],A_H_Pval.shape[2]))
+        BC += t2 + Omega_bar
+        return BC
+    ## RECHECK!!!
+
+    @cached_property
+    def Kron(self):
+        """returns a matrix that has elements 1 when En is close to Em"""
+        En = self.E_K 
+        threshold = 1e-3
+        return np.array(abs(En[:,:,None]-En[:,None,:]) < threshold, dtype = int)
+    
+    @cached_property
+    def Anti_Kron(self):
+        """returns a matrix that has elements 1 when En is NOT close to Em"""
+        return (np.ones((self.nk, self.num_wann, self.num_wann)) -self.Kron)
+    
+    @cached_property
+    def MagnetizationRing(self):
+        eps = self.levi_civita
+        Vel = self.velocity
+        A_H_Pval = self.A_H_P
+        V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
+        dE_dk = np.einsum('knni->kni', V_H)  # (nk, nb, dim)
+        Anti_kron = self.Anti_Kron
+        S = self.Xbar('SS') * hbar/2
+
+        M = np.zeros(V_H.shape, dtype=complex)
+        M += e/(2*c_light)*(np.einsum('knsa,ksmb,lab,kns->knml', A_H_Pval, Vel, eps,Anti_kron)
+             +1/hbar*np.einsum('knb,knma,lab->knml',dE_dk,A_H_Pval,eps)) +e/(m_e*c_light)*S
+        return M
+    
+      
+    @cached_property
+    def MagnetizationRingnnprime_Orb(self):
+        eps = self.levi_civita
+        Vel = self.velocity
+        A_H_Pval = self.A_H_P
+        Anti_kron = self.Anti_Kron
+        M = np.zeros(Vel.shape, dtype=complex)
+        M += e/(2*c_light)*np.einsum('knsa,ksmb,lab,kns->knml', A_H_Pval, Vel, eps,Anti_kron)  
+        return M
+    
+    @cached_property
+    def MagnetizationRingnnprime_Spin(self):
+        S = self.Xbar('SS') * hbar/2
+        M = np.zeros(S.shape, dtype=complex)
+        M += e/(m_e*c_light)*S
+        return M
+    
+    @cached_property
+    def OmegaRingnnprime(self):
+        eps = self.levi_civita
+        A_H_Pval = self.A_H_P
+        Anti_kron = self.Anti_Kron
+        return 1j*np.einsum('knmj,kmpl,ijl,knm->knpi', A_H_Pval, A_H_Pval, eps,Anti_kron)  
+
+
+
+    #Javier's code for the OmegaRing_nn' 
+    @cached_property
+    def gender_A_H(self):
+        sc_eta = 0.04
+        E_K = self.E_K * eV_to_erg
+        A_bar = self.Xbar('AA') * A_to_cm
+        dA_bar = self.Xbar('AA', 1) * A_to_cm**2
+        dH = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm 
+        ddH = self.Xbar('Ham', 2) * eV_to_erg * A_to_cm**2
+
+        dE_dk = np.einsum('knni->kni', dH)  
+        
+        Edif = E_K[:, :, None] - E_K[:, None, :]
+        Delta = dE_dk[:, :, None,:] - dE_dk[:,None, :, :] 
+        inv_Edif = self.dEig_inv
+        inv_Edif_eta = Edif / (Edif ** 2 + sc_eta ** 2)
+        anti_kron = self.Anti_Kron
+
+        summ = np.zeros((self.nk, self.num_wann, self.num_wann, 3, 3), dtype=complex)
+        summ += 1j * np.einsum('knma, kmmc -> knmac', A_bar, A_bar) #0
+        summ -= 1j * np.einsum('knma, knnc -> knmac', A_bar, A_bar) #1
+        summ += np.einsum('knmac -> knmac', dA_bar) #2
+        summ -= np.einsum('kpm, knpa, kpmc, kmp, knp -> knmac', inv_Edif_eta, A_bar, dH, anti_kron, anti_kron) #3
+        summ += np.einsum('knp, kpma, knpc, kmp, knp -> knmac', inv_Edif_eta, A_bar, dH, anti_kron, anti_kron) #4
+        summ += np.einsum('knm, kmma, knmc -> knmac', inv_Edif, A_bar, dH) #5
+        summ -= np.einsum('knm, knna, knmc -> knmac', inv_Edif, A_bar, dH) #6
+        summ += np.einsum('knm, kmmc, knma -> knmac', inv_Edif, A_bar, dH) #7
+        summ -= np.einsum('knm, knnc, knma -> knmac', inv_Edif, A_bar, dH) #8
+        summ -= 1j * np.einsum('knm, knmac -> knmac', inv_Edif, ddH) #9
+        summ += 1j * np.einsum('knm, kpm, knpa, kpmc, kmp, knp -> knmac', inv_Edif, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #10
+        summ -= 1j * np.einsum('knm, knp, kpma, knpc, kmp, knp -> knmac', inv_Edif, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #11
+        summ += 1j * np.einsum('knm, knma, knmc -> knmac', inv_Edif**2, dH, Delta) #12
+        summ += 1j * np.einsum('knm, knmc, knma -> knmac', inv_Edif**2, dH, Delta) #13
+        return summ
+
+
+
+    @cached_property
+    def berry_curvature_Javi(self):
+        gender_A = self.gender_A_H
+
+        Omega = np.zeros((self.nk, self.num_wann, self.num_wann, 3,), dtype=complex)
+        for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
+                        (-1,0,2,1), (-1,1,0,2), (-1,2,1,0)]:
+            Omega[...,l] += s * gender_A[:,:,:,b,a]
+        return Omega
+    
+    ##FIX####
+    @cached_property
+    def berry_curvature_Me(self):
+        gender_A = self.gender_A_H
+        A_H_Pval = self.A_H_P
+        eps = self.levi_civita
+        t1 = np.einsum('knna, knmb -> knmba',A_H_Pval,A_H_Pval)
+        t2 = np.einsum('kmma, knmb -> knmba',A_H_Pval,A_H_Pval)
+        t3 = 1j*(t1-t2)
+        t4 = t3 + gender_A
+
+        Omega = np.einsum('knmba, iab -> knmi',t4,eps)
+        return Omega
+    
+    @cached_property
+    def Octopole(self):
+        A_H_Pval = self.A_H_P
+        anti_kron = self.Anti_Kron
+        
+        t1 = e/36*np.einsum('qnpj,qpsl,qsmk,qnp,qps,qsm->qnmjlk', A_H_Pval, A_H_Pval, A_H_Pval,anti_kron,anti_kron,anti_kron)  
+        t2 = t1.swapaxes(-1, -2)
+        t3 = t1.swapaxes(-1, -3)
+        t4 = t3.swapaxes(-1, -2)
+        t5 = t2.swapaxes(-1, -3)
+        t6 = t4.swapaxes(-1, -3)
+        return t1+t2+t3+t4+t5+t6
+        
     @cached_property
     def Q2(self):
         """returns the Q2 term"""

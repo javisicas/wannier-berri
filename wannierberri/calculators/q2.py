@@ -2,11 +2,16 @@ import numpy as np
 from ..utility import alpha_A, beta_A
 from ..formula import Formula
 from ..symmetry.point_symmetry import transform_ident, transform_odd
-from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
+# from scipy.constants import elementary_charge, hbar, electron_mass, physical_constants, angstrom, speed_of_light
 from .. import factors as factors
 from .calculator import MultitermCalculator
 from .dynamic import DynamicCalculator
 from itertools import permutations
+
+speed_of_light = 3e10 #cm/s
+elementary_charge = 4.8032e-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546e-27 #cm^2 g s^-1
+electron_mass = 9.1093837139e-28 #g
 
 def symmetrize_axes(arr, axes_to_symmetrize):
     """
@@ -281,13 +286,13 @@ class Mag_sus_occ_2_spin_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         O = data_K.Q2.berry_curvature
-        M = data_K.Q2.magnetic_dipole_spin
+        M = data_K.Q2.magnetic_dipole_spin 
         kron = data_K.Q2.kron
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += 1 * hbar * np.einsum('knmi, knml, knm -> knmil', O, M, kron)
-        summ += 1 * hbar * np.einsum('knmi, knml, knm -> knmil', M, O, kron)
-        summ *= -elementary_charge / ( hbar * speed_of_light)
+        summ += np.einsum('knmi, kmnl, knm -> knmil', O, M, kron)
+        summ += np.einsum('knmi, kmnl, knm -> knmil', M, O, kron)
+        summ *= -elementary_charge / ( 2 * hbar * speed_of_light)
 
         self.Imn = np.real(summ)
         self.ndim = 2
@@ -322,9 +327,9 @@ class Mag_sus_occ_2_orb_formula(Formula):
         kron = data_K.Q2.kron
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += np.einsum('knmi, knml, knm -> knmil', O, M, kron)
-        summ += np.einsum('knmi, knml, knm -> knmil', M, O, kron)
-        summ *= -elementary_charge / ( hbar * speed_of_light)
+        summ += np.einsum('knmi, kmnl, knm -> knmil', O, M, kron)
+        summ += np.einsum('knmi, kmnl, knm -> knmil', M, O, kron)
+        summ *= -elementary_charge / ( 2 * hbar * speed_of_light)
 
         self.Imn = np.real(summ)
         self.ndim = 2
@@ -355,15 +360,12 @@ class Mag_sus_inter_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         O = data_K.Q2.berry_curvature
-        M_orb = data_K.Q2.magnetic_dipole_orb
-        M_spin = data_K.Q2.magnetic_dipole_spin
-        M = M_orb + M_spin
+        M = data_K.Q2.magnetic_dipole_inter
         antikron = data_K.Q2.anti_kron
         invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += np.einsum('knmi, knml, knm, knm -> knmil', M, M.conj(), antikron, invEdif)
-        summ *= -elementary_charge / ( hbar * speed_of_light)
+        summ += -2 * np.einsum('knmi, knml, knm, knm -> knmil', M, M.conj(), antikron, invEdif)
 
         self.Imn = np.real(summ)
         self.ndim = 2
@@ -399,12 +401,13 @@ class Mag_sus_occ_formula(Formula):
             A = data_K.Q2.A_H_internal
         lev = data_K.Q2.levicivita
         ddE = data_K.Q2.ddE
+        anti_kron = data_K.Q2.anti_kron
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += np.einsum('iab, lcd, knma, kmnc, kndb -> knmil', 
-                           lev, lev, A, A, ddE)
-        summ += - hbar**2/electron_mass *  np.einsum('iab, lcd, knma, kmnc, db -> knmil', 
-                                                   lev, lev, A, A, np.eye(3))
+        summ += np.einsum('iab, lcd, knma, kmnc, kndb, knm -> knmil', 
+                           lev, lev, A, A, ddE, anti_kron)
+        summ += - hbar**2/electron_mass *  np.einsum('iab, lcd, knma, kmnc, db, knm -> knmil', 
+                                                   lev, lev, A, A, np.eye(3), anti_kron)
         summ *= elementary_charge**2 / ( 4 * hbar**2 * speed_of_light**2 )
 
         self.Imn = np.real(summ)

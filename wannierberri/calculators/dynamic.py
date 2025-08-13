@@ -15,7 +15,23 @@ bohr_magneton = elementary_charge * hbar / (2 * electron_mass)
 bohr = physical_constants['Bohr radius'][0] / angstrom
 eV_au = physical_constants['electron volt-hartree relationship'][0]
 Ang_SI = angstrom
+from scipy.constants import hbar, c, e, m_e
+c_light = c
 
+eV_to_erg = 1.602176633e-12
+A_to_cm = 10e-8
+
+c = 3e10 #cm/s
+c_light = 3e10 #cm/s
+e = 4.8032e-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546e-27 #cm^2 g s^-1
+m_e = 9.1093837139e-28 #g
+
+# c = 1 #cm/s
+# c_light = 1 #cm/s
+# e = 1 #cm^3/2 g^1/2 s^-1
+# hbar = 1 #cm^2 g s^-1
+# m_e = 1 #g
 
 #######################################
 #                                     #
@@ -26,7 +42,7 @@ Ang_SI = angstrom
 
 class DynamicCalculator(Calculator, abc.ABC):
 
-    def __init__(self, Efermi=None, omega=None, kBT=0, smr_fixed_width=0.05, smr_type='Lorentzian',
+    def __init__(self, Efermi=None, omega=None, kBT=0, smr_fixed_width=0.1, smr_type='Lorentzian',
                  kwargs_formula=None, dtype=complex, **kwargs):
 
         if kwargs_formula is None:
@@ -89,7 +105,8 @@ class DynamicCalculator(Calculator, abc.ABC):
             npair = len(degen_group_pairs)
             if npair == 0:
                 continue
-
+#            for pair in degen_group_pairs:
+#                print(np.array([*pair[0],*pair[1]]))
             matrix_elements = np.array(
                 [formula.trace_ln(ik, np.arange(*pair[0]), np.arange(*pair[1])) for pair in degen_group_pairs])
             factor_Efermi = np.array([self.factor_Efermi(pair[2], pair[3]) for pair in degen_group_pairs])
@@ -152,7 +169,7 @@ class JDOS(DynamicCalculator):
         super().__init__(**kwargs)
         self.sigma = self.smr_fixed_width
         self.Formula = Formula_dyn_ident
-        self.dtype = float
+        self.dtype = complex
 
     def factor_omega(self, E1, E2):
         return self.smear(E2 - E1 - self.omega)
@@ -266,16 +283,16 @@ class ShiftCurrentFormula(Formula):
         # commutators
         # ** the spatial index of D_H_Pval corresponds to generalized derivative direction
         # ** --> stored in the fourth column of output variables
-        sum_HD = (cached_einsum('knlc,klma->knmca', V_H, D_H_Pval) -
-                  cached_einsum('knnc,knma->knmca', V_H, D_H_Pval) -
-                  cached_einsum('knla,klmc->knmca', D_H_Pval, V_H) +
-                  cached_einsum('knma,kmmc->knmca', D_H_Pval, V_H))
+        sum_HD = (np.einsum('knlc,klma->knmca', V_H, D_H_Pval) -
+                  np.einsum('knnc,knma->knmca', V_H, D_H_Pval) -
+                  np.einsum('knla,klmc->knmca', D_H_Pval, V_H) +
+                  np.einsum('knma,kmmc->knmca', D_H_Pval, V_H))
 
         # ** this one is invariant under a<-->c
-        DV_bit = (cached_einsum('knmc,knna->knmca', D_H, V_H) -
-                  cached_einsum('knmc,kmma->knmca', D_H, V_H) +
-                  cached_einsum('knma,knnc->knmca', D_H, V_H) -
-                  cached_einsum('knma,kmmc->knmca', D_H, V_H))
+        DV_bit = (np.einsum('knmc,knna->knmca', D_H, V_H) -
+                  np.einsum('knmc,kmma->knmca', D_H, V_H) +
+                  np.einsum('knma,knnc->knmca', D_H, V_H) -
+                  np.einsum('knma,kmmc->knmca', D_H, V_H))
 
         # generalized derivative
         A_gen_der = (+ 1j * (del2E_H + sum_HD + DV_bit) * dEig_inv[:, :, :, np.newaxis, np.newaxis])
@@ -284,16 +301,16 @@ class ShiftCurrentFormula(Formula):
             # ** --> stored in the fourth column of output variables
             A_Hbar = data_K.Xbar('AA')
             A_Hbar_der = data_K.Xbar('AA', 1)
-            sum_AD = (cached_einsum('knlc,klma->knmca', A_Hbar, D_H_Pval) -
-                      cached_einsum('knnc,knma->knmca', A_Hbar, D_H_Pval) -
-                      cached_einsum('knla,klmc->knmca', D_H_Pval, A_Hbar) +
-                      cached_einsum('knma,kmmc->knmca', D_H_Pval, A_Hbar))
-            AD_bit = (cached_einsum('knnc,knma->knmac', A_Hbar, D_H) -
-                      cached_einsum('kmmc,knma->knmac', A_Hbar, D_H) +
-                      cached_einsum('knna,knmc->knmac', A_Hbar, D_H) -
-                      cached_einsum('kmma,knmc->knmac', A_Hbar, D_H))
-            AA_bit = (cached_einsum('knnb,knma->knmab', A_Hbar, A_Hbar) -
-                      cached_einsum('kmmb,knma->knmab', A_Hbar, A_Hbar))
+            sum_AD = (np.einsum('knlc,klma->knmca', A_Hbar, D_H_Pval) -
+                      np.einsum('knnc,knma->knmca', A_Hbar, D_H_Pval) -
+                      np.einsum('knla,klmc->knmca', D_H_Pval, A_Hbar) +
+                      np.einsum('knma,kmmc->knmca', D_H_Pval, A_Hbar))
+            AD_bit = (np.einsum('knnc,knma->knmac', A_Hbar, D_H) -
+                      np.einsum('kmmc,knma->knmac', A_Hbar, D_H) +
+                      np.einsum('knna,knmc->knmac', A_Hbar, D_H) -
+                      np.einsum('kmma,knmc->knmac', A_Hbar, D_H))
+            AA_bit = (np.einsum('knnb,knma->knmab', A_Hbar, A_Hbar) -
+                      np.einsum('kmmb,knma->knmab', A_Hbar, A_Hbar))
 
             A_gen_der += A_Hbar_der + AD_bit - 1j * AA_bit + sum_AD
 
@@ -304,7 +321,7 @@ class ShiftCurrentFormula(Formula):
             A_H = data_K.A_H_internal
 
         # here we take the -real part to eliminate the 1j factor in the final factor
-        Imn = - cached_einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
+        Imn = - np.einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
         Imn += Imn.swapaxes(4, 5)  # symmetrize b and c
 
         self.Imn = Imn
@@ -319,7 +336,7 @@ class ShiftCurrentFormula(Formula):
 class ShiftCurrent(DynamicCalculator):
 
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=float, **kwargs)
+        super().__init__(dtype=complex, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = ShiftCurrentFormula
         self.constant_factor = factors.factor_shift_current
@@ -328,41 +345,6 @@ class ShiftCurrent(DynamicCalculator):
         delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
         delta_arg_21 = E2 - E1 - self.omega
         return self.smear(delta_arg_12) + self.smear(delta_arg_21)
-
-
-class ShiftCurrent2Formula(Formula):
-
-    def __init__(self, data_K, sc_eta, **parameters):
-        super().__init__(data_K, **parameters)
-        A_H = data_K.A_H if self.external_terms else data_K.A_H_internal
-        A_gen_der = data_K.Q2.gender_A_H if self.external_terms else data_K.Q.gender_A_H_internal
-
-        # here we take the -real part to eliminate the 1j factor in the final factor
-        Imn = - cached_einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
-        Imn += Imn.swapaxes(4, 5)  # symmetrize b and c
-
-        self.Imn = Imn
-        self.ndim = 3
-        self.transformTR = transform_ident
-        self.transformInv = transform_odd
-
-    def trace_ln(self, ik, inn1, inn2):
-        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
-
-
-class ShiftCurrent2(DynamicCalculator):
-
-    def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=float, **kwargs)
-        self.kwargs_formula.update(dict(sc_eta=sc_eta))
-        self.Formula = ShiftCurrent2Formula
-        self.constant_factor = factors.factor_shift_current
-
-    def factor_omega(self, E1, E2):
-        delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
-        delta_arg_21 = E2 - E1 - self.omega
-        return self.smear(delta_arg_12) + self.smear(delta_arg_21)
-
 
 
 # ===================
@@ -388,7 +370,7 @@ class InjectionCurrentFormula(Formula):
         # compute delta_V[k, m, n, a] = V_H[k, m, m, a] - V_H[k, n, n, a]
         delta_V = V_H_diag[:, :, None, :] - V_H_diag[:, None, :, :]  # (k, m, n, a)
 
-        Imn = cached_einsum('kmna,kmnb,knmc->kmnabc', delta_V, A_H, A_H)
+        Imn = np.einsum('kmna,kmnb,knmc->kmnabc', delta_V, A_H, A_H)
 
         self.Imn = Imn
         self.ndim = 3
@@ -409,3 +391,298 @@ class InjectionCurrent(DynamicCalculator):
     def factor_omega(self, E1, E2):
         delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
         return self.smear(delta_arg_12)
+
+
+# ===============
+#  Magnetic susceptibility 
+# ===============
+
+class MagneticSusceptibilityOccFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        A_H_Pval = data_K.A_H_P
+        ddE = data_K.ddE
+
+        eps = data_K.levi_civita
+        delta = np.eye(3) 
+        t1 = np.einsum('knma,kmnd,bc,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
+        t2 = np.einsum('knma,kmnd,knnbc,iab,lcd->knmil', A_H_Pval, A_H_Pval, ddE, eps, eps)
+        self.Occnm = e**2/(4*m_e*c_light**2)*np.real(t1-m_e/(hbar**2)*t2)
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+    
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.Occnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+
+class MagneticSusceptibilityOcc(DynamicCalculator):
+
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityOccFormula
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+
+class MagneticSusceptibilityVVFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        Mag = data_K.Magnetization
+        dEig_inv = data_K.dEig_inv.swapaxes(2, 1)
+       # print(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))
+        self.VVnm = np.real(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.VVnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+            
+class MagneticSusceptibilityVV(DynamicCalculator):
+
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+
+        self.Formula = MagneticSusceptibilityVVFormula
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+
+class MagneticSusceptibilityGeoFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        E_K = data_K.E_K
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        eps = data_K.levi_civita
+        BerryC = data_K.berry_curvature_Me#np.einsum('abi,knmab->knmi',eps,Omega) 
+        Mag = data_K.Magnetization
+        
+        t = np.real(np.einsum('knmi,kmnl->knmil',BerryC,Mag) + e/(8*hbar*c_light)*np.einsum('knmi,knm,kmnl->knmil',BerryC,dEig,BerryC) +np.einsum('knmi,kmnl->knmil',Mag,BerryC) +  e/(8*hbar*c_light)*np.einsum('knm,knmi,kmnl->knmil',dEig,BerryC,BerryC))
+        self.Geonm = -e/(2*hbar*c_light)*t
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.Geonm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+    
+
+class MagneticSusceptibilityGeo(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityGeoFormula
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+
+###############################################
+
+class MagneticSusceptibilityInterRingFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        dEig_inv = data_K.dEig_inv / eV_to_erg
+        MagRing = data_K.MagnetizationRing
+
+
+        InterRingnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        InterRingnm += -2*np.real(np.einsum('knmi,knml,knm->knmil',MagRing,np.conj(MagRing),dEig_inv))
+
+
+        Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
+        self.InterRingnm = InterRingnm * Anti_kron 
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.InterRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0)  
+
+
+class MagneticSusceptibilityInterRing(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityInterRingFormula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+    
+
+class MagneticSusceptibilityOccRingFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        A_H_Pval = data_K.A_H_P
+        ddE = data_K.ddE
+        eps = data_K.levi_civita
+        delta = np.eye(3) 
+
+        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        OccRingnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+
+        t1 += np.einsum('knma,kmnc,knnbd,iab,lcd->knmil', A_H_Pval, A_H_Pval, ddE, eps, eps)
+        t2 += -hbar**2/m_e*np.einsum('knma,kmnc,bd,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
+        OccRingnm += e**2/(4*hbar**2*c_light**2)*np.real(t1+t2)
+
+        Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
+        self.OccRingnm =OccRingnm * Anti_kron 
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.OccRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0) 
+
+
+class MagneticSusceptibilityOccRing(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityOccRingFormula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+    
+
+class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        Mag_nnprime = data_K.MagnetizationRingnnprime_Orb
+        Omega_nnprime = data_K.berry_curvature_Javi
+        np.save("M_orb_mat.npy", Mag_nnprime)
+        np.save("O", Omega_nnprime)
+
+        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        OccRing2Orbnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+
+        t1 += np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
+        t2 += np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
+        OccRing2Orbnm += -e/(2*hbar*c_light)*np.real(t1+t2)
+        kron = data_K.Kron[:,:,:,None,None]
+        np.save('t1_orb_mat.npy', t1 * kron)
+        np.save('t2_orb_mat.npy', t2 * kron)
+
+        self.OccRing2Orbnm =OccRing2Orbnm * kron 
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.OccRing2Orbnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+
+
+class MagneticSusceptibilityOcc2OrbRing(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityOcc2OrbRingFormula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+    
+class MagneticSusceptibilityOcc2SpinRingFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        Mag_nnprime = data_K.MagnetizationRingnnprime_Spin
+        Omega_nnprime = data_K.berry_curvature_Javi
+
+        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        OccRing2Spinnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+
+        t1 += np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
+        t2 += np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
+        OccRing2Spinnm += -e/(2*hbar*c_light)*np.real(t1+t2)
+
+        kron = data_K.Kron[:,:,:,None,None]
+        self.OccRing2Spinnm =OccRing2Spinnm #* kron 
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.OccRing2Spinnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+    
+
+class MagneticSusceptibilityOcc2SpinRing(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityOcc2SpinRingFormula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+    
+
+
+class PiTensorFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        A_H_Pval = data_K.A_H_P
+        Oct = data_K.Octopole
+
+        t1 =  np.einsum('qnmi,qmnjlk->qnmijlk', A_H_Pval, Oct)
+        t2 = t1.swapaxes(-1, -2)
+        t3 = t1.swapaxes(-1, -3)
+        t4 = t3.swapaxes(-1, -2)
+        t5 = t2.swapaxes(-1, -3)
+        t6 = t4.swapaxes(-1, -3)
+
+        self.PiTensornm =e/6*(t1+t2+t3+t4+t5+t6)
+        self.ndim = 4
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.PiTensornm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+    
+    
+class PiTensorFormula(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=complex, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = PiTensorFormula
+        
+    def factor_omega(self, E1, E2):
+        den = E2 - E1 - self.omega-1j*(1e-2)  # argument of delta function [iw, n, m]
+        return 1/den
