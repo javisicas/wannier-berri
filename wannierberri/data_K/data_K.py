@@ -341,7 +341,7 @@ class Data_K(System, abc.ABC):
 
     @cached_property
     def D_H(self):
-        return -self.Xbar('Ham', 1) * eV_to_erg * A_to_cm * self.dEig_inv[:, :, :, None]
+        return -self.Xbar('Ham', 1) * self.dEig_inv[:, :, :, None]
 
     @cached_property
     def A_H(self):
@@ -378,7 +378,7 @@ class Data_K(System, abc.ABC):
     def D_H_P(self):
         sc_eta = 0.04 * eV_to_erg
         D_H = self.D_H
-        E_K = self.E_K * eV_to_erg * eV_to_erg
+        E_K = self.E_K * eV_to_erg
         dEig = E_K[:, :, None] - E_K[:, None, :]
         dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
         V_H = self.Xbar('Ham', 1) * eV_to_erg * A_to_cm
