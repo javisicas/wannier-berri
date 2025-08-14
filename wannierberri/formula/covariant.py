@@ -1022,6 +1022,10 @@ class M_imag(Matrix_ln):
     def __init__(self, data_K):
         self.band = 3
         M = data_K.Q2.magnetic_dipole_internal
+        unk = data_K.UU_K
+        S = data_K.Xbar('SS')
+        np.save('UU_K.npy', unk)
+        np.save('S.npy', S)
 
         self.matrix = np.imag(M)
         self.ndim = 1

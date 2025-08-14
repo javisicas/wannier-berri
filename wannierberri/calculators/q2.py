@@ -71,18 +71,21 @@ def log(A, path):
 class test_Formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
+        # E, dE, ddE, invEdif, Delta, lev, A, dA, ddA, O, M, V, ddV, Q_P, Q_M, O_P, S, anti_kron = load(data_K, self.external_terms, spin)
         
-        log(E, path='E')
-        log( (data_K.grid.points_FFT) % 1, 'k')
-        log(A, path='A')
-        log(V, path='V')
-        log(M, path='M')
-        log(O, path='O')
-        log(Q_P, path='Q_P')
-        log(Q_M, path='Q_M')
-        log(Q_M, path='O_P')
+        # log(E, path='E')
+        # log( (data_K.grid.points_FFT) % 1, 'k')
+        # log(A, path='A')
+        # log(V, path='V')
+        # log(M, path='M')
+        # log(O, path='O')
+        # log(Q_P, path='Q_P')
+        # log(Q_M, path='Q_M')
+        # log(Q_M, path='O_P')
 
+        log(data_K.UU_K, 'UU_K')
+
+        A = data_K.Q2.A_H
         self.Imn = A
         self.ndim = 1
 

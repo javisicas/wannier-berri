@@ -252,7 +252,7 @@ class Data_K(System, abc.ABC):
 
     @cached_property
     def delE_K(self):
-        delE_K = np.einsum("klla->kla", self.Xbar('Ham', 1) * eV_to_erg * A_to_cm)
+        delE_K = np.einsum("klla->kla", self.Xbar('Ham', 1) )
         check = np.abs(delE_K).imag.max()
         if check > 1e-10:
             raise RuntimeError(f"The band derivatives have considerable imaginary part: {check}")
@@ -376,7 +376,7 @@ class Data_K(System, abc.ABC):
     
     @cached_property
     def D_H_P(self):
-        sc_eta = 0.04
+        sc_eta = 0.04 * eV_to_erg
         D_H = self.D_H
         E_K = self.E_K * eV_to_erg * eV_to_erg
         dEig = E_K[:, :, None] - E_K[:, None, :]
@@ -459,7 +459,7 @@ class Data_K(System, abc.ABC):
     def Kron(self):
         """returns a matrix that has elements 1 when En is close to Em"""
         En = self.E_K 
-        threshold = 1e-3
+        threshold = 1e-7
         return np.array(abs(En[:,:,None]-En[:,None,:]) < threshold, dtype = int)
     
     @cached_property
@@ -512,7 +512,7 @@ class Data_K(System, abc.ABC):
     #Javier's code for the OmegaRing_nn' 
     @cached_property
     def gender_A_H(self):
-        sc_eta = 0.04
+        sc_eta = 0.04 * eV_to_erg
         E_K = self.E_K * eV_to_erg
         A_bar = self.Xbar('AA') * A_to_cm
         dA_bar = self.Xbar('AA', 1) * A_to_cm**2

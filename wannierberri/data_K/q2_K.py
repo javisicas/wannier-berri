@@ -15,8 +15,8 @@ class Q2_K:
         self.A_to_cm = 10e-8
         
         self.data_K = data_K
-        self.eta = 0.04
-        self.dEnm_threshold = 1e-3
+        self.eta = 0.04 * self.eV_to_erg
+        self.dEnm_threshold = 1e-7
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
@@ -92,15 +92,14 @@ class Q2_K:
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
         ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
-        sc_eta = 0.04
         E_K = self.E_K
         dEig = E_K[:, :, None] - E_K[:, None, :]
-        dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
+        dEig_inv_Pval = dEig / (dEig ** 2 + self.eta ** 2)
         D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
 
         dHD_part = np.einsum('knla, klmb -> knmab', dH, D_H_Pval)
         ddE = ddH + dHD_part + np.conjugate(dHD_part.swapaxes(1,2))
-        return np.diagonal(ddE, axis1=1, axis2=2).transpose(0,3,1,2) 
+        return np.diagonal(ddE, axis1=1, axis2=2).transpose(0,3,1,2)
 
     @cached_property
     def invEdif(self):
