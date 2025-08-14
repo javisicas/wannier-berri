@@ -4,19 +4,20 @@ import numpy as np
 from ..formula.formula import Matrix_GenDer_ln
 from ..formula.covariant import DerDcov, Der2Dcov, Der2A, Dcov
 
-speed_of_light = 3e10 #cm/s
-elementary_charge = 4.8032e-10 #cm^3/2 g^1/2 s^-1
-hbar = 1.0546e-27 #cm^2 g s^-1
-electron_mass = 9.1093837139e-28 #g
-    
+speed_of_light = 3*10**10 #cm/s
+elementary_charge = 4.8032*10**-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546*10**-27 #cm^2 g s^-1
+eV_ergs = 1.6022*10**-12
+electron_mass = 9.1094*10**-28 #g
+
 class Q2_K:
     def __init__(self, data_K):
-        self.eV_to_erg = 1.602176633e-12
-        self.A_to_cm = 10e-8
+        self.eV_to_erg = eV_ergs
+        self.A_to_cm = 1e-8
         
         self.data_K = data_K
         self.eta = 0.04 * self.eV_to_erg
-        self.dEnm_threshold = 1e-7
+        self.dEnm_threshold = 1e-3
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)

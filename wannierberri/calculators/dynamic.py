@@ -1,7 +1,7 @@
 import numpy as np
 import abc
 import functools
-from ..utility import Gaussian, Lorentzian, FermiDirac, cached_einsum
+from ..utility import Gaussian, Lorentzian, FermiDirac
 from ..result import EnergyResult
 from .calculator import Calculator
 from ..formula.covariant import SpinVelocity
@@ -15,23 +15,16 @@ bohr_magneton = elementary_charge * hbar / (2 * electron_mass)
 bohr = physical_constants['Bohr radius'][0] / angstrom
 eV_au = physical_constants['electron volt-hartree relationship'][0]
 Ang_SI = angstrom
-from scipy.constants import hbar, c, e, m_e
-c_light = c
+#from scipy.constants import hbar, c, e, m_e
+#c_light = c
 
-eV_to_erg = 1.602176633e-12
-A_to_cm = 10e-8
+c_light = 3*10**10 #cm/s
+e = 4.8032*10**-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546*10**-27 #cm^2 g s^-1
+eV_ergs = 1.6022*10**-12
+m_e = 9.1094*10**-28 #g
 
-c = 3e10 #cm/s
-c_light = 3e10 #cm/s
-e = 4.8032e-10 #cm^3/2 g^1/2 s^-1
-hbar = 1.0546e-27 #cm^2 g s^-1
-m_e = 9.1093837139e-28 #g
-
-# c = 1 #cm/s
-# c_light = 1 #cm/s
-# e = 1 #cm^3/2 g^1/2 s^-1
-# hbar = 1 #cm^2 g s^-1
-# m_e = 1 #g
+angstrom_to_cm = 1e-8
 
 #######################################
 #                                     #
@@ -169,7 +162,7 @@ class JDOS(DynamicCalculator):
         super().__init__(**kwargs)
         self.sigma = self.smr_fixed_width
         self.Formula = Formula_dyn_ident
-        self.dtype = complex
+        self.dtype = float
 
     def factor_omega(self, E1, E2):
         return self.smear(E2 - E1 - self.omega)
@@ -336,7 +329,7 @@ class ShiftCurrentFormula(Formula):
 class ShiftCurrent(DynamicCalculator):
 
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = ShiftCurrentFormula
         self.constant_factor = factors.factor_shift_current
@@ -407,7 +400,7 @@ class MagneticSusceptibilityOccFormula(Formula):
         delta = np.eye(3) 
         t1 = np.einsum('knma,kmnd,bc,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
         t2 = np.einsum('knma,kmnd,knnbc,iab,lcd->knmil', A_H_Pval, A_H_Pval, ddE, eps, eps)
-        self.Occnm = e**2/(4*m_e*c_light**2)*np.real(t1-m_e/(hbar**2)*t2)
+        self.Occnm = e**2/(4*m_e*c_light**2)*np.real(t1-m_e/(hbar**2)*t2)#/((2*np.pi)**3)
         self.ndim = 2
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -419,9 +412,11 @@ class MagneticSusceptibilityOccFormula(Formula):
 class MagneticSusceptibilityOcc(DynamicCalculator):
 
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityOccFormula
+        self.constant_factor = 1/(angstrom_to_cm**3)
+
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -435,8 +430,8 @@ class MagneticSusceptibilityVVFormula(Formula):
         super().__init__(data_K, **parameters)
         Mag = data_K.Magnetization
         dEig_inv = data_K.dEig_inv.swapaxes(2, 1)
-       # print(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))
-        self.VVnm = np.real(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))
+       # print(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv)/((2*np.pi)**3))
+        self.VVnm = np.real(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))#/((2*np.pi)**3))
         self.ndim = 2
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -447,9 +442,9 @@ class MagneticSusceptibilityVVFormula(Formula):
 class MagneticSusceptibilityVV(DynamicCalculator):
 
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
-
+        self.constant_factor =  1/(angstrom_to_cm**3)
         self.Formula = MagneticSusceptibilityVVFormula
         
     def factor_omega(self, E1, E2):
@@ -459,14 +454,14 @@ class MagneticSusceptibilityVV(DynamicCalculator):
 class MagneticSusceptibilityGeoFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
         super().__init__(data_K, **parameters)
-        E_K = data_K.E_K
+        E_K = data_K.E_K*eV_ergs
         dEig = E_K[:, :, None] - E_K[:, None, :]
         eps = data_K.levi_civita
         BerryC = data_K.berry_curvature_Me#np.einsum('abi,knmab->knmi',eps,Omega) 
         Mag = data_K.Magnetization
         
         t = np.real(np.einsum('knmi,kmnl->knmil',BerryC,Mag) + e/(8*hbar*c_light)*np.einsum('knmi,knm,kmnl->knmil',BerryC,dEig,BerryC) +np.einsum('knmi,kmnl->knmil',Mag,BerryC) +  e/(8*hbar*c_light)*np.einsum('knm,knmi,kmnl->knmil',dEig,BerryC,BerryC))
-        self.Geonm = -e/(2*hbar*c_light)*t
+        self.Geonm = -e/(2*hbar*c_light)*t#/((2*np.pi)**3)
         self.ndim = 2
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -478,9 +473,10 @@ class MagneticSusceptibilityGeoFormula(Formula):
 
 class MagneticSusceptibilityGeo(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityGeoFormula
+        self.constant_factor =  1/(angstrom_to_cm**3)
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -490,20 +486,15 @@ class MagneticSusceptibilityGeo(DynamicCalculator):
         return omega
 
 ###############################################
-
 class MagneticSusceptibilityInterRingFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
         super().__init__(data_K, **parameters)
-        dEig_inv = data_K.dEig_inv / eV_to_erg
+        dEig_inv = data_K.dEig_inv/eV_ergs
         MagRing = data_K.MagnetizationRing
 
-
-        InterRingnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        InterRingnm += -2*np.real(np.einsum('knmi,knml,knm->knmil',MagRing,np.conj(MagRing),dEig_inv))
-
-
+        InterRingnm = -2*np.real(np.einsum('knmi,knml,knm->knmil',MagRing,np.conj(MagRing),dEig_inv))#/((2*np.pi)**3))
         Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
-        self.InterRingnm = InterRingnm * Anti_kron 
+        self.InterRingnm =InterRingnm * Anti_kron 
         self.ndim = 2
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -512,13 +503,12 @@ class MagneticSusceptibilityInterRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.InterRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0)  
 
-
 class MagneticSusceptibilityInterRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityInterRingFormula
-        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.constant_factor =  1/(angstrom_to_cm**3)
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -536,15 +526,17 @@ class MagneticSusceptibilityOccRingFormula(Formula):
         eps = data_K.levi_civita
         delta = np.eye(3) 
 
-        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        OccRingnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-
-        t1 += np.einsum('knma,kmnc,knnbd,iab,lcd->knmil', A_H_Pval, A_H_Pval, ddE, eps, eps)
-        t2 += -hbar**2/m_e*np.einsum('knma,kmnc,bd,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
-        OccRingnm += e**2/(4*hbar**2*c_light**2)*np.real(t1+t2)
-
+        t1 = np.einsum('knma,kmnc,knnbd,iab,lcd->knmil', A_H_Pval, A_H_Pval, ddE, eps, eps)
+        t2 = -hbar**2/m_e*np.einsum('knma,kmnc,bd,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
+        OccRingnm = e**2/(4*hbar**2*c_light**2)*np.real(t1+t2)#/((2*np.pi)**3)
         Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
+
+        np.save('ddE_mat.npy', ddE)
+        np.save('A_mat.npy', A_H_Pval)
+        np.save('t1_mat.npy', t1 * Anti_kron )
+        np.save('t2_mat.npy', t2 * Anti_kron )
+        np.save('occ_mat.npy', OccRingnm * Anti_kron )
+
         self.OccRingnm =OccRingnm * Anti_kron 
         self.ndim = 2
         self.transformTR = transform_ident
@@ -554,13 +546,12 @@ class MagneticSusceptibilityOccRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.OccRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0) 
 
-
 class MagneticSusceptibilityOccRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityOccRingFormula
-        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.constant_factor =  1/(angstrom_to_cm**3)
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -570,25 +561,18 @@ class MagneticSusceptibilityOccRing(DynamicCalculator):
         return omega
     
 
+
 class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
         super().__init__(data_K, **parameters)
         Mag_nnprime = data_K.MagnetizationRingnnprime_Orb
         Omega_nnprime = data_K.berry_curvature_Javi
-        np.save("M_orb_mat.npy", Mag_nnprime)
+        np.save("Mag", Mag_nnprime)
         np.save("O", Omega_nnprime)
-
-        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        OccRing2Orbnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-
-        t1 += np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
-        t2 += np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
-        OccRing2Orbnm += -e/(2*hbar*c_light)*np.real(t1+t2)
+        t1 = np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
+        t2 = np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
+        OccRing2Orbnm = -e/(2*hbar*c_light)*np.real(t1+t2)#/((2*np.pi)**3)
         kron = data_K.Kron[:,:,:,None,None]
-        np.save('t1_orb_mat.npy', t1 * kron)
-        np.save('t2_orb_mat.npy', t2 * kron)
-
         self.OccRing2Orbnm =OccRing2Orbnm * kron 
         self.ndim = 2
         self.transformTR = transform_ident
@@ -597,14 +581,13 @@ class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
     def trace_ln(self, ik, inn1, inn2):
         idx = np.concatenate((inn1, inn2))
         return self.OccRing2Orbnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
-
-
+    
 class MagneticSusceptibilityOcc2OrbRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityOcc2OrbRingFormula
-        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.constant_factor =  1/(angstrom_to_cm**3)
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -619,16 +602,11 @@ class MagneticSusceptibilityOcc2SpinRingFormula(Formula):
         Mag_nnprime = data_K.MagnetizationRingnnprime_Spin
         Omega_nnprime = data_K.berry_curvature_Javi
 
-        t1 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        t2 = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        OccRing2Spinnm = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-
-        t1 += np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
-        t2 += np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
-        OccRing2Spinnm += -e/(2*hbar*c_light)*np.real(t1+t2)
-
+        t1 = np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
+        t2 = np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
+        OccRing2Spinnm = -e/(2*hbar*c_light)*np.real(t1+t2)#/((2*np.pi)**3)
         kron = data_K.Kron[:,:,:,None,None]
-        self.OccRing2Spinnm =OccRing2Spinnm #* kron 
+        self.OccRing2Spinnm =OccRing2Spinnm * kron 
         self.ndim = 2
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -637,13 +615,12 @@ class MagneticSusceptibilityOcc2SpinRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.OccRing2Spinnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
     
-
 class MagneticSusceptibilityOcc2SpinRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = MagneticSusceptibilityOcc2SpinRingFormula
-        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.constant_factor =  1/(angstrom_to_cm**3)
 
     def factor_Efermi(self, E1, E2):
         return self.FermiDirac(E1)
@@ -667,7 +644,7 @@ class PiTensorFormula(Formula):
         t5 = t2.swapaxes(-1, -3)
         t6 = t4.swapaxes(-1, -3)
 
-        self.PiTensornm =e/6*(t1+t2+t3+t4+t5+t6)
+        self.PiTensornm =e/6*(t1+t2+t3+t4+t5+t6)#/((2*np.pi)**3)
         self.ndim = 4
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -679,7 +656,7 @@ class PiTensorFormula(Formula):
     
 class PiTensorFormula(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=complex, **kwargs)
+        super().__init__(dtype=float, **kwargs)
         self.kwargs_formula.update(dict(sc_eta=sc_eta))
         self.Formula = PiTensorFormula
         

@@ -46,4 +46,4 @@ factor_injection_current = - pi * elementary_charge ** 3 / (hbar ** 2) * TAU_UNI
 
 ###########################################
 
-factor_cell_volume_to_m = (10e8)**3
+factor_cell_volume_to_m = (1e8)**3

@@ -8,10 +8,17 @@ from .calculator import MultitermCalculator
 from .dynamic import DynamicCalculator
 from itertools import permutations
 
-speed_of_light = 3e10 #cm/s
-elementary_charge = 4.8032e-10 #cm^3/2 g^1/2 s^-1
-hbar = 1.0546e-27 #cm^2 g s^-1
-electron_mass = 9.1093837139e-28 #g
+# speed_of_light = 3e10 #cm/s
+# elementary_charge = 4.8032e-10 #cm^3/2 g^1/2 s^-1
+# hbar = 1.0546e-27 #cm^2 g s^-1
+# electron_mass = 9.1093837139e-28 #g
+
+speed_of_light = 3*10**10 #cm/s
+elementary_charge = 4.8032*10**-10 #cm^3/2 g^1/2 s^-1
+hbar = 1.0546*10**-27 #cm^2 g s^-1
+eV_ergs = 1.6022*10**-12
+electron_mass = 9.1094*10**-28 #g
+
 
 def symmetrize_axes(arr, axes_to_symmetrize):
     """
@@ -398,10 +405,7 @@ class Mag_sus_inter(DynamicCalculator):
 class Mag_sus_occ_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        if self.external_terms:
-            A = data_K.Q2.A_H
-        else:
-            A = data_K.Q2.A_H_internal
+        A = data_K.Q2.A_H
         lev = data_K.Q2.levicivita
         ddE = data_K.Q2.ddE
         anti_kron = data_K.Q2.anti_kron
@@ -413,6 +417,14 @@ class Mag_sus_occ_formula(Formula):
                                                    lev, lev, A, A, np.eye(3), anti_kron)
         summ *= elementary_charge**2 / ( 4 * hbar**2 * speed_of_light**2 )
 
+        np.save('ddE_me.npy', ddE)
+        np.save('A_me.npy', A)
+        np.save('t1_me.npy', np.einsum('iab, lcd, knma, kmnc, kndb, knm -> knmil', 
+                           lev, lev, A, A, ddE, anti_kron))
+        np.save('t2_me.npy', - hbar**2/electron_mass *  np.einsum('iab, lcd, knma, kmnc, db, knm -> knmil', 
+                                                   lev, lev, A, A, np.eye(3), anti_kron))
+        np.save('occ_me.npy', np.real(summ))
+        
         self.Imn = np.real(summ)
         self.ndim = 2
 
