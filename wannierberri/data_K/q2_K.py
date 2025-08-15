@@ -16,8 +16,9 @@ class Q2_K:
         self.A_to_cm = 1e-8
         
         self.data_K = data_K
-        self.eta = 0.04 * self.eV_to_erg
-        self.dEnm_threshold = 1e-3
+        self.eta = data_K.eta * self.eV_to_erg
+        self.dEnm_threshold = data_K.threshold
+
         En = self.data_K.E_K
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
@@ -80,7 +81,7 @@ class Q2_K:
         return summ
 
     @cached_property
-    def E_K(self):
+    def E(self):
         return self.data_K.E_K * self.eV_to_erg
 
     @cached_property
@@ -93,7 +94,7 @@ class Q2_K:
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
         ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
-        E_K = self.E_K
+        E_K = self.E
         dEig = E_K[:, :, None] - E_K[:, None, :]
         dEig_inv_Pval = dEig / (dEig ** 2 + self.eta ** 2)
         D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
@@ -111,19 +112,19 @@ class Q2_K:
     #     return self.data_K.Xbar('SS') * hbar/2
 
     @cached_property
-    def A_H(self):
+    def A(self):
         return self.data_K.A_H * self.A_to_cm
 
     @cached_property
-    def A_H_internal(self):
+    def A_internal(self):
         A_int = self.data_K.A_H_internal
         return A_int * self.A_to_cm
 
     @cached_property
     def velocity(self):
         # eq 61, in SI
-        E = self.E_K
-        A = self.A_H
+        E = self.E
+        A = self.A
         dE = self.dE # knma
         dEnm = np.zeros((dE.shape[0],dE.shape[1],dE.shape[1],dE.shape[2]), dtype=complex)
         rows, cols = np.diag_indices(dE.shape[1])
@@ -134,14 +135,35 @@ class Q2_K:
     @cached_property
     def velocity_internal(self):
         # eq 61
-        E = self.E_K
-        A = self.A_H_internal
+        E = self.E
+        A = self.A_internal
         dE = self.dE # knma
         dEnm = np.zeros((dE.shape[0],dE.shape[1],dE.shape[1],dE.shape[2]), dtype=complex)
         rows, cols = np.diag_indices(dE.shape[1])
         dEnm[:,rows,cols,:] = dE
         V = dEnm + 1j*(E[:,:,None,None] - E[:,None,:,None])* A
         return V / hbar
+
+    @cached_property
+    def mass_sum_rule(self):
+        # Eq 37 - hbar**2/m delta_ij
+        A = self.A
+        V = self.velocity
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += hbar * 1j * np.einsum('knlj, klmi -> knmij', A, V)
+        summ -= hbar * 1j * np.einsum('knli, klmj -> knmij', V, A)
+        return summ
+
+    @cached_property
+    def berry_curvature_truncation(self):
+        A = self.A
+        anti_kron = self.anti_kron
+        lev = self.levicivita
+        
+        Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
+        Omega += 1j * np.einsum('qnlj, qlmk, qnl, qlm, ijk -> qnmi', A, A, anti_kron, anti_kron, lev)
+        return Omega
 
     @cached_property
     def berry_curvature(self):
@@ -167,10 +189,10 @@ class Q2_K:
     @cached_property
     def gender2_velocity_internal(self):
         # Eq (D4), SI
-        E = self.E_K
+        E = self.E
         dE = self.dE
         ddE = self.ddE
-        A = self.A_H_internal #knmd
+        A = self.A_internal #knmd
         gender_A = self.gender_A_H_internal #knmd(a/c)
         gender2_A = self.gender2_A_H_internal #knmdca
         
@@ -206,7 +228,7 @@ class Q2_K:
         # Eq (D2), off diag
         V = self.velocity
         dE = self.dE
-        A = self.A_H
+        A = self.A
         lev = self.levicivita
         anti_kron = self.anti_kron
 
@@ -219,7 +241,7 @@ class Q2_K:
     def magnetic_dipole_inter(self):
         # Eq (D2), off diag
         dE = self.dE
-        A = self.A_H
+        A = self.A
         M_spin = self.magnetic_dipole_spin
         M_orb = self.magnetic_dipole_orb
         lev = self.levicivita
@@ -234,7 +256,7 @@ class Q2_K:
         # Eq (D2), off diag
         V = self.velocity
         dE = self.dE
-        A = self.A_H
+        A = self.A
         lev = self.levicivita
         anti_kron = self.anti_kron
         try:
@@ -255,7 +277,7 @@ class Q2_K:
         # Eq (D2), off diag
         V = self.velocity
         dE = self.dE
-        A = self.A_H
+        A = self.A
         lev = self.levicivita
         anti_kron = self.anti_kron
         try:
@@ -275,7 +297,7 @@ class Q2_K:
     def magnetic_dipole_internal(self):
         V = self.velocity_internal
         dE = self.dE
-        A = self.A_H_internal
+        A = self.A_internal
         lev = self.levicivita
         anti_kron = self.anti_kron
         try:
@@ -293,7 +315,7 @@ class Q2_K:
 
     @cached_property
     def electric_quadrupole(self):
-        A = self.A_H
+        A = self.A
         anti_kron = self.anti_kron
 
         Q_P = elementary_charge/4 * (np.einsum('kmpj, kpni, kmp, knp -> kmnji', A, A, anti_kron, anti_kron)
@@ -302,7 +324,7 @@ class Q2_K:
 
     @cached_property
     def electric_quadrupole_internal(self):
-        A = self.A_H_internal
+        A = self.A_internal
         anti_kron = self.anti_kron
 
         Q_P = elementary_charge/4 * (np.einsum('kmpj, kpni, kmp, knp -> kmnji', A, A, anti_kron, anti_kron)
@@ -311,7 +333,7 @@ class Q2_K:
 
     @cached_property
     def magnetic_quadrupole(self, spin):
-        A = self.A_H
+        A = self.A
         dA = self.gender_A_H
         V = self.velocity
         dE = self.dE
@@ -345,7 +367,7 @@ class Q2_K:
 
     @cached_property
     def magnetic_quadrupole_internal(self):
-        A = self.A_H_internal
+        A = self.A_internal
         dA = self.gender_A_H_internal
         V = self.velocity_internal
         dE = self.dE
@@ -378,7 +400,7 @@ class Q2_K:
 
     @cached_property
     def electric_octupole(self):
-        A = self.A_H
+        A = self.A
         dA = self.gender_A_H
         ddA = self.gender2_A_H
         anti_kron = self.anti_kron
@@ -398,7 +420,7 @@ class Q2_K:
 
     @cached_property
     def electric_octupole_internal(self):
-        A = self.A_H_internal
+        A = self.A_internal
         dA = self.gender_A_H_internal
         ddA = self.gender2_A_H_internal
         anti_kron = self.anti_kron
@@ -426,7 +448,7 @@ class Q2_K:
     @cached_property
     def Edif(self):
         # J
-        E = self.E_K
+        E = self.E
         return E[:,:,None] - E[:,None,:]
 
     @cached_property
@@ -572,6 +594,11 @@ class Q2_K:
         summ += -2 * 1j * np.einsum('knm, knmb, knnc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #49
         summ += -1 * 1j * np.einsum('knm, knnb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #50
         return summ
+
+    def gender2_A_truncation(self):
+        
+
+
 
 #########################################################
 # MISC

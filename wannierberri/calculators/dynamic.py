@@ -531,12 +531,6 @@ class MagneticSusceptibilityOccRingFormula(Formula):
         OccRingnm = e**2/(4*hbar**2*c_light**2)*np.real(t1+t2)#/((2*np.pi)**3)
         Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
 
-        np.save('ddE_mat.npy', ddE)
-        np.save('A_mat.npy', A_H_Pval)
-        np.save('t1_mat.npy', t1 * Anti_kron )
-        np.save('t2_mat.npy', t2 * Anti_kron )
-        np.save('occ_mat.npy', OccRingnm * Anti_kron )
-
         self.OccRingnm =OccRingnm * Anti_kron 
         self.ndim = 2
         self.transformTR = transform_ident
@@ -567,8 +561,6 @@ class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
         super().__init__(data_K, **parameters)
         Mag_nnprime = data_K.MagnetizationRingnnprime_Orb
         Omega_nnprime = data_K.berry_curvature_Javi
-        np.save("Mag", Mag_nnprime)
-        np.save("O", Omega_nnprime)
         t1 = np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
         t2 = np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
         OccRing2Orbnm = -e/(2*hbar*c_light)*np.real(t1+t2)#/((2*np.pi)**3)

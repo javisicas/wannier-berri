@@ -111,8 +111,14 @@ class Data_K(System, abc.ABC):
                  fftlib='fftw',
                  npar_k=1,
                  random_gauge=False,
-                 degen_thresh_random_gauge=1e-4
+                 degen_thresh_random_gauge=1e-4,
+                 eta=0.04,
+                 threshold=1e-3
                  ):
+
+        self.eta = eta
+        self.threshold = threshold
+        
         self.system = system
         self.Emin = Emin
         self.Emax = Emax
@@ -523,7 +529,6 @@ class Data_K(System, abc.ABC):
         summ += 1j * np.einsum('knm, knma, knmc -> knmac', inv_Edif**2, dH, Delta) #12
         summ += 1j * np.einsum('knm, knmc, knma -> knmac', inv_Edif**2, dH, Delta) #13
         return summ
-
 
 
     @cached_property
