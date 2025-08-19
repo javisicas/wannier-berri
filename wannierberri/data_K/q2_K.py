@@ -167,7 +167,7 @@ class Q2_K:
 
     @cached_property
     def berry_curvature(self):
-        gender_A = self.gender_A_H
+        gender_A = self.gender_A
         
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
         for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
@@ -178,7 +178,7 @@ class Q2_K:
     @cached_property
     def berry_curvature_internal(self):
         # in SI (m**2)
-        gender_A = self.gender_A_H_internal
+        gender_A = self.gender_A_internal
         
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
         for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
@@ -193,8 +193,8 @@ class Q2_K:
         dE = self.dE
         ddE = self.ddE
         A = self.A_internal #knmd
-        gender_A = self.gender_A_H_internal #knmd(a/c)
-        gender2_A = self.gender2_A_H_internal #knmdca
+        gender_A = self.gender_A_internal #knmd(a/c)
+        gender2_A = self.gender2_A_internal #knmdca
         
         E_dif = E[:,:,None] - E[:,None,:]
         dE_dif = dE[:,:,None,:] - dE[:,None,:,:] #knmc
@@ -206,6 +206,64 @@ class Q2_K:
         gender2_V += 1j * np.einsum('knma, knmcd -> knmdca', dE_dif, gender_A)
         gender2_V += 1j * np.einsum('knmca, knmd -> knmdca', ddE_dif, A)
         return gender2_V / hbar
+
+    @cached_property
+    def dV_eq_37(self):
+        A = self.A
+        V = self.velocity
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += hbar * 1j * np.einsum('knlj, klmi -> knmij', A, V)
+        summ -= hbar * 1j * np.einsum('knli, klmj -> knmij', V, A)
+        identity = np.eye(self.data_K.num_wann, dtype=np.complex)
+        shape = np.tile(identity, (self.data_K.nk, 1, 1)).reshape(self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)
+        summ += hbar/electron_mass * np.einsum('knm, ij -> knmij', shape, np.eye(3) )
+        return summ
+
+    @cached_property
+    def hessian(self):
+        dV = self.dV_eq_37
+        A = self.A
+        V = self.velocity
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1 * hbar * np.einsum('knmab -> knmab', dV)
+        summ += 1 * hbar * 1j * np.einsum('klmb, knla -> knmab', A, V)
+        summ += -1 * hbar * 1j * np.einsum('knlb, klma -> knmab', A.conj(), V)
+        return summ
+
+    @cached_property
+    def ddV_der_eq_37(self):
+        A = self.A
+        dA = self.dA
+        V = self.velocity
+        dV = self.dV_eq_37
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1 * 1j * np.einsum('knlac, klmb -> knmabc', dV, A)
+        summ += 1 * 1j * np.einsum('klmac, knlb -> knmabc', dA, A)
+        summ += -1 * 1j * np.einsum('klmbc, knla -> knmabc', dA, V)
+        summ += 1 * 1j * np.einsum('knlbc, klma -> knmabc', dA, V)
+        return summ
+
+    @cached_property
+    def tressian(self):
+        V = self.velocity
+        dV = self.dV_eq_37
+        ddV = self.ddV_der_eq_37
+        A = self.A
+        dA = self.dA
+        w = self.hessian
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1 * hbar * 1j * np.einsum('klmac, knlb -> knmabc', dV, A.conj())
+        summ += 1 * hbar * 1j * np.einsum('knlac, klmb -> knmabc', dV, A)
+        summ += 1 * hbar * np.einsum('knmabc -> knmabc', ddV)
+        summ += 1 * hbar * 1j * np.einsum('klmbc, knla -> knmabc', dA, V)
+        summ += -1 * hbar * 1j * np.einsum('knlbc, klma -> knmabc', dA.conj(), V)
+        summ += -1 * 1j * np.einsum('klmc, knlab -> knmabc', A, w)
+        summ += -1 * 1j * np.einsum('knlc, klmab -> knmabc', A.conj(), w)
+        return summ
 
 #################################################################
 # MULTIPOLAR STUFF
@@ -334,7 +392,7 @@ class Q2_K:
     @cached_property
     def magnetic_quadrupole(self, spin):
         A = self.A
-        dA = self.gender_A_H
+        dA = self.gender_A
         V = self.velocity
         dE = self.dE
         ddE = self.ddE
@@ -368,7 +426,7 @@ class Q2_K:
     @cached_property
     def magnetic_quadrupole_internal(self):
         A = self.A_internal
-        dA = self.gender_A_H_internal
+        dA = self.gender_A_internal
         V = self.velocity_internal
         dE = self.dE
         ddE = self.ddE
@@ -401,8 +459,8 @@ class Q2_K:
     @cached_property
     def electric_octupole(self):
         A = self.A
-        dA = self.gender_A_H
-        ddA = self.gender2_A_H
+        dA = self.gender_A
+        ddA = self.gender2_A
         anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
@@ -421,8 +479,8 @@ class Q2_K:
     @cached_property
     def electric_octupole_internal(self):
         A = self.A_internal
-        dA = self.gender_A_H_internal
-        ddA = self.gender2_A_H_internal
+        dA = self.gender_A_internal
+        ddA = self.gender2_A_internal
         anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
@@ -473,7 +531,7 @@ class Q2_K:
 
 
     @cached_property
-    def gender_A_H(self):
+    def gender_A(self):
         A_bar = self.data_K.Xbar('AA') * self.A_to_cm
         dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm**2
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
@@ -503,7 +561,7 @@ class Q2_K:
         return summ
 
     @cached_property
-    def gender_A_H_internal(self):
+    def gender_A_internal(self):
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
         ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
 
@@ -523,7 +581,7 @@ class Q2_K:
         return summ
 
     @cached_property
-    def gender2_A_H_internal(self):
+    def gender2_A_internal(self):
         # TB: A_bar -> 0, only term is gender of eq 32
         dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
         ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
@@ -535,7 +593,7 @@ class Q2_K:
         dDelta = self.dDelta
         inv_Edif = self.invEdif
         inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
-        gender_A = self.gender_A_H_internal
+        gender_A = self.gender_A_internal
         anti_kron = self.anti_kron
         
         # different orders of 1/omega_nm
@@ -595,10 +653,84 @@ class Q2_K:
         summ += -1 * 1j * np.einsum('knm, knnb, knmc, knma -> knmabc', inv_Edif**3, dH, dH, Delta) #50
         return summ
 
+    @cached_property
+    def dA(self):
+        A_bar = self.A
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_ergs * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_ergs * self.A_to_cm**2
+        invEdif = self.invEdif
+        E_K = self.E
+
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        dEig_inv_Pval = dEig / (dEig ** 2 + self.eta ** 2)
+        D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        # U^{dagger}ddU
+        summ += ddH
+        summ -= np.einsum('klm, knla, klmb -> knmab', invEdif, dH, dH)
+        summ -= np.einsum('klm, knlb, klma -> knmab', invEdif, dH, dH)
+        summ += np.einsum('knm, kmma, knmb -> knmab', invEdif, dH, dH)
+        summ += np.einsum('knm, kmmb, knma -> knmab', invEdif, dH, dH)
+        summ *= -1 * invEdif[...,None,None]
+
+        summ += np.einsum('knlb, klma -> knmab', D_H_Pval, A)
+        summ += ddA
+        summ += np.einsum('knla, klmb -> knmab', A, D_H_Pval)
+        summ += 1j * np.einsum('knla, klmb -> knmab', D_H_Pval, D_H_Pval)
+        return summ
+
+
+    @cached_property
+    def gender_A_truncation(self):
+        A = self.A
+        V = self.velocity
+        invEdif = self.invEdif
+        w = self.hessian
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1 * hbar * np.einsum('kmn, klma, knlb -> knmab', invEdif, A, V)
+        summ += -1 * hbar * np.einsum('kmn, knla, klmb -> knmab', invEdif, A, V)
+        summ += -1 * hbar * np.einsum('kmn, knma, kmmb -> knmab', invEdif, A, V)
+        summ += 1 * hbar * np.einsum('kmn, knma, knnb -> knmab', invEdif, A, V)
+        summ += -1 * hbar * np.einsum('kmn, knmb, kmma -> knmab', invEdif, A, V)
+        summ += 1 * hbar * np.einsum('kmn, knmb, knna -> knmab', invEdif, A, V)
+        summ += 1 * 1j * np.einsum('kmn, knmab -> knmab', invEdif, w)
+        return summ
+
+
+    @cached_property
     def gender2_A_truncation(self):
-        
+        A = self.A
+        dA = self.dA
+        V = self.velocity
+        dV = self.dV_eq_37
+        invEdif = self.invEdif
+        w = self.hessian
+        g = self.tressian
+        dE = self.dE
+        ddE = self.ddE
 
+        dDelta = dE[:,:,None,:] - dE[:,None,:,:]
+        ddDelta = ddE[:,:,None,:,:] - ddE[:,None,:,:,:]
 
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3, 3), dtype=complex)
+        summ += -1 * hbar * np.einsum('kmn, klmac, knlb -> knmab', invEdif, dV, A)
+        summ += 1 * hbar * np.einsum('kmn, knlac, klmb -> knmab', invEdif, dV, A)
+        summ += 1 * hbar * np.einsum('kmn, klmbc, knla -> knmab', invEdif, dA, V)
+        summ += -1 * hbar * np.einsum('kmn, knlbc, klma -> knmab', invEdif, dA, V)
+        summ += -1 * np.einsum('knm, kmnac, knmb -> knmab', invEdif, ddDelta, A)
+        summ += -1 * np.einsum('knm, kmnbc, knma -> knmab', invEdif, ddDelta, A)
+        summ += -1 * np.einsum('kmn, kmna, knmbc -> knmab', invEdif, dDelta, dA)
+        summ += -1 * np.einsum('kmn, kmnb, knmac -> knmab', invEdif, dDelta, dA)
+        summ += -1 * np.einsum('kmn, kmnc, knmab -> knmab', invEdif, dDelta, dA)
+        summ += 1 * np.einsum('kmn, klmc, knlab -> knmab', invEdif, A, w)
+        summ += -1 * np.einsum('kmn, knlc, klmab -> knmab', invEdif, A, w)
+        summ += -1 * np.einsum('kmn, knmc, kmmab -> knmab', invEdif, A, w)
+        summ += 1 * np.einsum('kmn, knmc, knnab -> knmab', invEdif, A, w)
+        summ += 1 * 1j * np.einsum('kmn, knmabc -> knmab', invEdif, g)
+        return summ
 
 #########################################################
 # MISC

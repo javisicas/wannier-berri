@@ -19,54 +19,6 @@ hbar = 1.0546*10**-27 #cm^2 g s^-1
 eV_ergs = 1.6022*10**-12
 electron_mass = 9.1094*10**-28 #g
 
-def symmetrize_axes(arr, axes_to_symmetrize):
-    """
-    Symmetrize the array over the specified three axes by averaging over all permutations.
-    
-    Parameters:
-    arr (numpy.ndarray): Input array to symmetrize.
-    axes_to_symmetrize (list of int): List of three axes to symmetrize.
-    
-    Returns:
-    numpy.ndarray: Symmetrized array.
-    """
-    # Validate input
-    if len(axes_to_symmetrize) != 3:
-        raise ValueError("Exactly three axes must be specified for symmetrization.")
-    if len(set(axes_to_symmetrize)) != 3:
-        raise ValueError("The axes to symmetrize must be distinct.")
-    if any(axis >= arr.ndim or axis < -arr.ndim for axis in axes_to_symmetrize):
-        raise ValueError("One or more specified axes are out of bounds for the array.")
-    
-    # Convert negative axes to positive for easier handling
-    axes_to_symmetrize = [axis if axis >= 0 else arr.ndim + axis for axis in axes_to_symmetrize]
-    
-    # Generate all permutations of the specified axes
-    all_permutations = list(permutations(axes_to_symmetrize))
-    
-    # Initialize the symmetrized array
-    symmetrized = np.zeros_like(arr)
-    
-    # For each permutation, transpose the array and add to the sum
-    for perm in all_permutations:
-        # Construct the new axis order:
-        # - All axes not in `axes_to_symmetrize` remain in their original positions.
-        # - The axes in `axes_to_symmetrize` are permuted according to `perm`.
-        new_order = []
-        for axis in range(arr.ndim):
-            if axis in axes_to_symmetrize:
-                # This axis is being permuted; find its new position in `perm`
-                new_order.append(perm[axes_to_symmetrize.index(axis)])
-            else:
-                # This axis is not being permuted; keep its original position
-                new_order.append(axis)
-        symmetrized += np.transpose(arr, new_order)
-    
-    # Average over all permutations
-    symmetrized /= len(all_permutations)
-    
-    return symmetrized
-
 def log(A, path):
     np.save(path + '.npy', A)
     # with open(path,'w') as f:
@@ -266,29 +218,6 @@ def load(data_K, external_terms, spin):
 # MAGNETIC SUSCEPTIBILITY
 ########################################################
 
-
-class Mag_sus_TR_even(MultitermCalculator):
-
-    def __init__(self, spin=False, **kwargs):
-        super().__init__(**kwargs)
-        params_terms = dict(spin=spin)
-        # Fermi sea terms
-        self.terms.extend([Mag_sus_even_1(**params_terms, **kwargs),
-                           Mag_sus_even_2(**params_terms, **kwargs),
-                           Mag_sus_even_3(**params_terms, **kwargs)])
-
-
-class Mag_sus_TR_odd(MultitermCalculator):
-
-    def __init__(self, spin=False, **kwargs):
-        super().__init__(**kwargs)
-        params_terms = dict(spin=spin)
-        # Fermi sea terms
-        self.terms.extend([Mag_sus_odd_1(**params_terms, **kwargs),
-                           Mag_sus_odd_3(**params_terms, **kwargs)])
-
-
-##########################################################################################
 
 
 class Mag_sus_occ_2_spin_formula(Formula):
@@ -2057,6 +1986,86 @@ class A4_TR(DynamicCalculator):
 
     def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
         return omega_part_3_test(self.omega, self.smr_fixed_width, E1, E2, self.sign_omega, self.sign_smr)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Sigma_diag_ijl_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature
+        A = data_K.Q2.A
+        lev = data_K.Q2.lev
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1/18 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnd, kmnb, knmj, dai, lab -> knmilj', O, A, A, lev, lev)
+        summ += 1/18 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnd, knmb, kmnj, dai, lab -> knmilj', O, A, A, lev, lev)
+        summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnl, kmni, knmj -> knmilj', O, A, A)
+        summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnl, knmi, kmnj -> knmilj', O, A, A)
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Sigma_diag_ijl_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Sigma_diag_ijl_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_1(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Sigma_diag_ijlk_1_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        O = data_K.Q2.berry_curvature
+        A = data_K.Q2.A
+        lev = data_K.Q2.lev
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3, 3, 3), dtype=complex)
+        summ += 1/18 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnd, kmnb, knmj, dai, lab -> knmilj', O, A, A, lev, lev)
+        summ += 1/18 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnd, knmb, kmnj, dai, lab -> knmilj', O, A, A, lev, lev)
+        summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnl, kmni, knmj -> knmilj', O, A, A)
+        summ += -1/12 * elementary_charge**2 * 1/hbar * 1/speed_of_light * 1j * np.einsum('knnl, knmi, kmnj -> knmilj', O, A, A)
+        self.Imn = summ
+        self.ndim = 3
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class Sigma_diag_ijlk_1(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        # if 'TR' in type(self).__name__:
+        #     self.sign = -1
+        # else:
+        self.sign = 1
+        
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Sigma_diag_ijl_1_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def factor_omega(self, E1, E2): #E1 occ E2 unocc I believe
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
 
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1) - self.FermiDirac(E2)

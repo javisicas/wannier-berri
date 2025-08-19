@@ -340,6 +340,46 @@ class ShiftCurrent(DynamicCalculator):
         return self.smear(delta_arg_12) + self.smear(delta_arg_21)
 
 
+
+class ShiftCurrentTestFormula(Formula):
+
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        A_gen_der = data_K.Q2.gender_A_truncation
+
+        # generalized derivative is fourth index of A, we put it into third index of Imn
+        if self.external_terms:
+            A_H = data_K.A_H
+        else:
+            A_H = data_K.A_H_internal
+
+        # here we take the -real part to eliminate the 1j factor in the final factor
+        Imn = - np.einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
+        Imn += Imn.swapaxes(4, 5)  # symmetrize b and c
+
+        self.Imn = Imn
+        self.ndim = 3
+        self.transformTR = transform_ident
+        self.transformInv = transform_odd
+
+    def trace_ln(self, ik, inn1, inn2):
+        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
+
+
+class ShiftCurrentTest(DynamicCalculator):
+
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=float, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = ShiftCurrentTestFormula
+        self.constant_factor = factors.factor_shift_current
+
+    def factor_omega(self, E1, E2):
+        delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
+        delta_arg_21 = E2 - E1 - self.omega
+        return self.smear(delta_arg_12) + self.smear(delta_arg_21)
+
+
 # ===================
 #  Injection current
 # ===================
