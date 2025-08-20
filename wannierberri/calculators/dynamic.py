@@ -340,46 +340,6 @@ class ShiftCurrent(DynamicCalculator):
         return self.smear(delta_arg_12) + self.smear(delta_arg_21)
 
 
-
-class ShiftCurrentTestFormula(Formula):
-
-    def __init__(self, data_K, sc_eta, **parameters):
-        super().__init__(data_K, **parameters)
-        A_gen_der = data_K.Q2.gender_A_truncation
-
-        # generalized derivative is fourth index of A, we put it into third index of Imn
-        if self.external_terms:
-            A_H = data_K.A_H
-        else:
-            A_H = data_K.A_H_internal
-
-        # here we take the -real part to eliminate the 1j factor in the final factor
-        Imn = - np.einsum('knmca,kmnb->knmabc', A_gen_der, A_H).imag
-        Imn += Imn.swapaxes(4, 5)  # symmetrize b and c
-
-        self.Imn = Imn
-        self.ndim = 3
-        self.transformTR = transform_ident
-        self.transformInv = transform_odd
-
-    def trace_ln(self, ik, inn1, inn2):
-        return self.Imn[ik, inn1].sum(axis=0)[inn2].sum(axis=0)
-
-
-class ShiftCurrentTest(DynamicCalculator):
-
-    def __init__(self, sc_eta, **kwargs):
-        super().__init__(dtype=float, **kwargs)
-        self.kwargs_formula.update(dict(sc_eta=sc_eta))
-        self.Formula = ShiftCurrentTestFormula
-        self.constant_factor = factors.factor_shift_current
-
-    def factor_omega(self, E1, E2):
-        delta_arg_12 = E1 - E2 - self.omega  # argument of delta function [iw, n, m]
-        delta_arg_21 = E2 - E1 - self.omega
-        return self.smear(delta_arg_12) + self.smear(delta_arg_21)
-
-
 # ===================
 #  Injection current
 # ===================
@@ -469,7 +429,7 @@ class MagneticSusceptibilityVVFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
         super().__init__(data_K, **parameters)
         Mag = data_K.Magnetization
-        dEig_inv = data_K.dEig_inv.swapaxes(2, 1)
+        dEig_inv = data_K.dEig_inv.swapaxes(2, 1)/eV_ergs
        # print(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv)/((2*np.pi)**3))
         self.VVnm = np.real(np.einsum('knmi,kmnl,kmn->knmil',Mag,Mag,dEig_inv))#/((2*np.pi)**3))
         self.ndim = 2
@@ -543,6 +503,7 @@ class MagneticSusceptibilityInterRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.InterRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0)  
 
+
 class MagneticSusceptibilityInterRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
         super().__init__(dtype=float, **kwargs)
@@ -570,7 +531,6 @@ class MagneticSusceptibilityOccRingFormula(Formula):
         t2 = -hbar**2/m_e*np.einsum('knma,kmnc,bd,iab,lcd->knmil', A_H_Pval, A_H_Pval, delta, eps, eps)
         OccRingnm = e**2/(4*hbar**2*c_light**2)*np.real(t1+t2)#/((2*np.pi)**3)
         Anti_kron = data_K.Anti_Kron[:,:,:,None,None]
-
         self.OccRingnm =OccRingnm * Anti_kron 
         self.ndim = 2
         self.transformTR = transform_ident
@@ -579,6 +539,7 @@ class MagneticSusceptibilityOccRingFormula(Formula):
     def trace_ln(self, ik, inn1, inn2):
         idx = np.concatenate((inn1, inn2))
         return self.OccRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0) 
+
 
 class MagneticSusceptibilityOccRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
@@ -595,12 +556,13 @@ class MagneticSusceptibilityOccRing(DynamicCalculator):
         return omega
     
 
-
 class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
         super().__init__(data_K, **parameters)
         Mag_nnprime = data_K.MagnetizationRingnnprime_Orb
         Omega_nnprime = data_K.berry_curvature_Javi
+        np.save("Mag", Mag_nnprime)
+        np.save("O", Omega_nnprime)
         t1 = np.einsum('knpi,kpnl->knpil', Omega_nnprime, Mag_nnprime)
         t2 = np.einsum('knpi,kpnl->knpil', Mag_nnprime, Omega_nnprime)
         OccRing2Orbnm = -e/(2*hbar*c_light)*np.real(t1+t2)#/((2*np.pi)**3)
@@ -647,6 +609,7 @@ class MagneticSusceptibilityOcc2SpinRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.OccRing2Spinnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
     
+
 class MagneticSusceptibilityOcc2SpinRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
         super().__init__(dtype=float, **kwargs)

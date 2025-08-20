@@ -14,11 +14,8 @@
 import numpy as np
 import abc
 from functools import cached_property
-<<<<<<< HEAD
-=======
 
 from ..utility import cached_einsum, clear_cached
->>>>>>> 5983c43f89c743893cea65b90d2540e05c30432b
 from ..parallel import pool
 from ..system.system import System
 from ..grid import TetraWeights, TetraWeightsParal, get_bands_in_range, get_bands_below_range
@@ -357,6 +354,7 @@ class Data_K(System, abc.ABC):
     def A_H(self):
         '''Generalized Berry connection matrix, A^(H) as defined in eqn. (25) of 10.1103/PhysRevB.74.195118.'''
         return (self.Xbar('AA') + 1j * self.D_H)
+    
     @property
     def A_H_internal(self):
         '''Generalized Berry connection matrix, A^(H) as defined in eqn. (25) of 10.1103/PhysRevB.74.195118. only internal term'''
@@ -367,6 +365,10 @@ class Data_K(System, abc.ABC):
         """returns the SDC term"""
         return SDCT_K(self)
 
+    @cached_property
+    def Q2(self):
+        return Q2_K(self)
+        
     def __exit__(self, exc_type, exc_value, traceback):
         # print (f'exition data_k {exc_type=}, {exc_value=}, {traceback=} ')
         clear_cached(self, ["SDCT"])
@@ -376,7 +378,6 @@ class Data_K(System, abc.ABC):
 
     def __enter__(self):
         return self
-
 
 #########################################################################################################################################
     @cached_property
@@ -582,8 +583,3 @@ class Data_K(System, abc.ABC):
         t5 = t2.swapaxes(-1, -3)
         t6 = t4.swapaxes(-1, -3)
         return t1+t2+t3+t4+t5+t6
-
-    @cached_property
-    def Q2(self):
-        """returns the Q2 term"""
-        return Q2_K(self)
