@@ -531,7 +531,7 @@ class Mag_sus_geo_wang_formula(Formula):
         super().__init__(data_K, **parameters)
         A = data_K.Q2.A_eta
         Edif = data_K.Q2.Edif
-        M = data_K.Q2.magnetic_dipole_no_ring_wang
+        M = data_K.Q2.magnetic_dipole_no_ring
         O = data_K.Q2.berry_curvature_wang
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
@@ -566,7 +566,7 @@ class Mag_sus_geo_wang(DynamicCalculator):
 class Mag_sus_VV_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        M = data_K.Q2.magnetic_dipole_no_ring_wang
+        M = data_K.Q2.magnetic_dipole_no_ring
         invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)

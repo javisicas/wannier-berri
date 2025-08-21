@@ -366,6 +366,26 @@ class Q2_K:
         return summ
 
     @cached_property
+    def magnetic_dipole_no_ring(self):
+        # Eq (D2), off diag
+        V = self.velocity
+        dE = self.dE
+        A = self.A
+        lev = self.levicivita
+        try:
+            S = self.data_K.Xbar('SS') * hbar/2         
+        except:
+            S = np.zeros(V.shape)
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('kmsa, ksnb, lab -> knml', A, V, lev)
+        summ += 1/4 * elementary_charge * 1/speed_of_light * np.einsum('ksna, kmsb, lab -> knml', A, V, lev)
+        summ += 1/4 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> knml', dE, A, lev)
+        summ += 1/4 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knb, kmna, lab -> knml', dE, A, lev)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> knml', S)
+        return summ
+
+    @cached_property
     def magnetic_dipole(self):
         # Eq (D2), off diag
         V = self.velocity
