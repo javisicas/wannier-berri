@@ -219,7 +219,6 @@ def load(data_K, external_terms, spin):
 ########################################################
 
 
-
 class Mag_sus_occ_2_spin_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
@@ -337,10 +336,11 @@ class Mag_sus_inter_formula(Formula):
         O = data_K.Q2.berry_curvature
         M = data_K.Q2.magnetic_dipole_inter
         antikron = data_K.Q2.anti_kron
-        invEdif = data_K.Q2.invEdif
+        Edif = data_K.Q2.Edif
+        inv_Edif_eta = Edif / (Edif ** 2 + data_K.Q2.eta ** 2)
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
-        summ += -2 * np.einsum('knmi, knml, knm, knm -> knmil', M, M.conj(), antikron, invEdif)
+        summ += -2 * np.einsum('knmi, knml, knm, knm -> knmil', M, M.conj(), antikron, inv_Edif_eta)
 
         self.Imn = np.real(summ)
         self.ndim = 2
@@ -370,7 +370,7 @@ class Mag_sus_inter(DynamicCalculator):
 class Mag_sus_occ_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        A = data_K.Q2.A
+        A = data_K.Q2.A_eta
         lev = data_K.Q2.levicivita
         ddE = data_K.Q2.ddE
         anti_kron = data_K.Q2.anti_kron
@@ -411,7 +411,7 @@ class Mag_sus_occ(DynamicCalculator):
 class Mag_sus_occ_mass_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        A = data_K.Q2.A
+        A = data_K.Q2.A_eta
         lev = data_K.Q2.levicivita
         anti_kron = data_K.Q2.anti_kron
         mass_sum_rule = data_K.Q2.mass_sum_rule
@@ -434,6 +434,116 @@ class Mag_sus_occ_mass(DynamicCalculator):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
         self.Formula = Mag_sus_occ_mass_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+##########################################################################################
+
+class Mag_sus_geo_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.Q2.A_eta
+        Edif = data_K.Q2.Edif
+        M = data_K.Q2.magnetic_dipole_no_ring
+        O = data_K.Q2.berry_curvature_dA
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += -1/8 * elementary_charge**2 * hbar**(-2) * speed_of_light**(-2) * np.einsum('knm, knmi, kmnl -> knmil', Edif, O, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knmi, kmnl -> knmil', M, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmnl, knmi -> knmil', M, O)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_geo(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_geo_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+class Mag_sus_VV_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        M = data_K.Q2.magnetic_dipole_no_ring
+        invEdif = data_K.Q2.invEdif
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1 * np.einsum('kmn, knmi, kmnl -> knmil', invEdif, M, M)
+
+        self.Imn = summ
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_VV(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_VV_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1) - self.FermiDirac(E2)
+
+
+class Mag_sus_occ_no_ring_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.Q2.A_eta
+        ddE = data_K.Q2.ddE
+        lev = data_K.Q2.levicivita
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += -1/4 * elementary_charge**2 * hbar**(-2) * speed_of_light**(-2) * np.einsum('kncb, knma, kmnd, iab, lcd -> knmil', ddE, A, A, lev, lev)
+        summ += 1/4 * 1/electron_mass * elementary_charge**2 * speed_of_light**(-2) * np.einsum('knma, kmnd, iac, lcd -> knmil', A, A, lev, lev)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_occ_no_ring(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_occ_no_ring_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident

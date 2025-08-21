@@ -23,54 +23,6 @@ class Q2_K:
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
 
-    def symmetrize_axes(self, arr, axes_to_symmetrize):
-        from itertools import permutations
-        """
-        Symmetrize the array over the specified three axes by averaging over all permutations.
-        
-        Parameters:
-        arr (numpy.ndarray): Input array to symmetrize.
-        axes_to_symmetrize (list of int): List of three axes to symmetrize.
-        
-        Returns:
-        numpy.ndarray: Symmetrized array.
-        """
-        # Validate input
-        if len(axes_to_symmetrize) != 3:
-            raise ValueError("Exactly three axes must be specified for symmetrization.")
-        if len(set(axes_to_symmetrize)) != 3:
-            raise ValueError("The axes to symmetrize must be distinct.")
-        if any(axis >= arr.ndim or axis < -arr.ndim for axis in axes_to_symmetrize):
-            raise ValueError("One or more specified axes are out of bounds for the array.")
-        
-        # Convert negative axes to positive for easier handling
-        axes_to_symmetrize = [axis if axis >= 0 else arr.ndim + axis for axis in axes_to_symmetrize]
-        
-        # Generate all permutations of the specified axes
-        all_permutations = list(permutations(axes_to_symmetrize))
-        
-        # Initialize the symmetrized array
-        symmetrized = np.zeros_like(arr)
-        
-        # For each permutation, transpose the array and add to the sum
-        for perm in all_permutations:
-            # Construct the new axis order:
-            # - All axes not in `axes_to_symmetrize` remain in their original positions.
-            # - The axes in `axes_to_symmetrize` are permuted according to `perm`.
-            new_order = []
-            for axis in range(arr.ndim):
-                if axis in axes_to_symmetrize:
-                    # This axis is being permuted; find its new position in `perm`
-                    new_order.append(perm[axes_to_symmetrizendex(axis)])
-                else:
-                    # This axis is not being permuted; keep its original position
-                    new_order.append(axis)
-            symmetrized += np.transpose(arr, new_order)
-        
-        # Average over all permutations
-        symmetrized /= len(all_permutations)
-        
-        return symmetrized
 
     @cached_property
     def levicivita(self):
@@ -112,8 +64,20 @@ class Q2_K:
     #     return self.data_K.Xbar('SS') * hbar/2
 
     @cached_property
+    def D_eta(self):
+        Edif = self.Edif # erg
+        inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
+        return -self.data_K.Xbar('Ham', 1) * inv_Edif_eta[:, :, :, None] * eV_ergs * self.A_to_cm
+
+    @cached_property
     def A(self):
         return self.data_K.A_H * self.A_to_cm
+
+    @cached_property
+    def A_eta(self):
+        D_eta = self.D_eta
+        A = self.data_K.Xbar('AA') * self.A_to_cm 
+        return A + 1j * D_eta
 
     @cached_property
     def A_internal(self):
@@ -147,27 +111,29 @@ class Q2_K:
     @cached_property
     def mass_sum_rule(self):
         # Eq 37 - hbar**2/m delta_ij
-        A = self.A
+        A = self.A_eta
         V = self.velocity
+        anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
-        summ += hbar * 1j * np.einsum('knlj, klmi -> knmij', A, V)
-        summ -= hbar * 1j * np.einsum('knli, klmj -> knmij', V, A)
+        summ += hbar * 1j * np.einsum('knlj, klmi, knl, klm -> knmij', A, V, anti_kron, anti_kron)
+        summ -= hbar * 1j * np.einsum('knli, klmj, knl, klm -> knmij', V, A, anti_kron, anti_kron)
         return summ
 
     @cached_property
     def berry_curvature_truncation(self):
-        A = self.A
+        A = self.A_eta
         anti_kron = self.anti_kron
         lev = self.levicivita
         
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
-        Omega += 1j * np.einsum('qnlj, qlmk, qnl, qlm, ijk -> qnmi', A, A, anti_kron, anti_kron, lev)
+        # Omega += 1j * np.einsum('qnlj, qlmk, qnl, qlm, ijk -> qnmi', A, A, anti_kron, anti_kron, lev)
+        Omega += 1j * np.einsum('qnlj, qlmk, qnl, ijk -> qnmi', A, A, anti_kron, lev)
         return Omega
 
     @cached_property
     def berry_curvature(self):
-        gender_A = self.gender_A
+        gender_A = self.gender_A_eta
         
         Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
         for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
@@ -185,6 +151,32 @@ class Q2_K:
                         (-1,0,2,1), (-1,1,0,2), (-1,2,1,0)]:
             Omega[...,l] += s * gender_A[:,:,:,b,a] 
         return Omega 
+
+    @cached_property
+    def berry_curvature_dA(self):
+        dA = self.dA_eta
+        
+        Omega = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3,), dtype=complex)
+        for s,l,a,b in [(1,0,1,2), (1,1,2,0), (1,2,0,1),
+                        (-1,0,2,1), (-1,1,0,2), (-1,2,1,0)]:
+            Omega[...,l] += s * dA[:,:,:,b,a] 
+        return Omega
+
+    @cached_property
+    def berry_curvature_wang(self):
+        """returns the Berry curvature as in eqn. (27) of 10.1103/PhysRevB.74.195118."""
+        Omega_bar = (self.Xbar('AA', 1) - self.Xbar('AA', 1).swapaxes(-1, -2)) * (angstrom_to_cm**2)
+        D_H_Pval =  self.D_eta
+        A_H_Pval = self.A_eta
+
+        t2 = (-np.einsum('knla,klmb->knmab',D_H_Pval,A_H_Pval)+
+              np.einsum('knlb,klma->knmab',A_H_Pval,D_H_Pval) +
+              np.einsum('knlb,klma->knmab',D_H_Pval,A_H_Pval)-
+              np.einsum('knla,klmb->knmab',A_H_Pval,D_H_Pval) -
+              1j*np.einsum('knla,klmb->knmab',D_H_Pval,D_H_Pval) +
+              1j*np.einsum('knlb,klma->knmab',D_H_Pval,D_H_Pval)
+             )
+        return Omega_bar + t2
 
     @cached_property
     def gender2_velocity_internal(self):
@@ -286,20 +278,20 @@ class Q2_K:
         # Eq (D2), off diag
         V = self.velocity
         dE = self.dE
-        A = self.A
+        A = self.A_eta
         lev = self.levicivita
         anti_kron = self.anti_kron
 
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
-        # summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
-        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmp, kmpa, kpnb, lab -> kmnl', anti_kron, A, V, lev)
+        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('knp, kpm, kmpa, kpnb, lab -> kmnl', anti_kron, anti_kron, A, V, lev)
+        # summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmp, kmpa, kpnb, lab -> kmnl', anti_kron, A, V, lev)
         return summ
 
     @cached_property
     def magnetic_dipole_inter(self):
         # Eq (D2), off diag
         dE = self.dE
-        A = self.A
+        A = self.A_eta
         M_spin = self.magnetic_dipole_spin
         M_orb = self.magnetic_dipole_orb
         lev = self.levicivita
@@ -307,6 +299,24 @@ class Q2_K:
         summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
         summ += M_spin + M_orb
         summ += elementary_charge / (2 * speed_of_light) * 1/hbar * np.einsum('knb, knma, lab -> knml', dE, A, lev)
+        return summ
+
+    @cached_property
+    def magnetic_dipole_no_ring(self):
+        # Eq (D2), off diag
+        dE = self.dE
+        A = self.A_eta
+        V = self.velocity
+        O = self.berry_curvature_dA
+        Edif = self.Edif
+        lev = self.levicivita
+        S = self.data_K.Xbar('SS') * hbar/2
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmpa, kpnb, lab -> knml', A, V, lev)
+        summ += -1/4 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knm, knml -> knml', Edif, O)
+        summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> knml', dE, A, lev)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> knml', S)
         return summ
 
     @cached_property
@@ -505,7 +515,6 @@ class Q2_K:
 
     @cached_property
     def Edif(self):
-        # J
         E = self.E
         return E[:,:,None] - E[:,None,:]
 
@@ -528,7 +537,6 @@ class Q2_K:
         # this needs testing, is dE_dif the same as dvnn + dvmm
         dE = self.dE
         return dE[:,:,None,:] - dE[:,None,:,:]
-
 
     @cached_property
     def gender_A(self):
@@ -558,6 +566,36 @@ class Q2_K:
         summ -= 1j * np.einsum('knm, knp, kpma, knpc, kmp, knp -> knmac', inv_Edif, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #11
         summ += 1j * np.einsum('knm, knma, knmc -> knmac', inv_Edif**2, dH, Delta) #12
         summ += 1j * np.einsum('knm, knmc, knma -> knmac', inv_Edif**2, dH, Delta) #13
+        return summ
+
+    @cached_property
+    def gender_A_eta(self):
+        A_bar = self.data_K.Xbar('AA') * self.A_to_cm
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
+
+        Edif = self.Edif
+        Delta = self.Delta # or self.dE_dif
+        inv_Edif = self.invEdif
+        inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
+        anti_kron = self.anti_kron
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        summ += 1j * np.einsum('knma, kmmc -> knmac', A_bar, A_bar) #0
+        summ -= 1j * np.einsum('knma, knnc -> knmac', A_bar, A_bar) #1
+        summ += np.einsum('knmac -> knmac', dA_bar) #2
+        summ -= np.einsum('kpm, knpa, kpmc, kmp, knp -> knmac', inv_Edif_eta, A_bar, dH, anti_kron, anti_kron) #3
+        summ += np.einsum('knp, kpma, knpc, kmp, knp -> knmac', inv_Edif_eta, A_bar, dH, anti_kron, anti_kron) #4
+        summ += np.einsum('knm, kmma, knmc -> knmac', inv_Edif_eta, A_bar, dH) #5
+        summ -= np.einsum('knm, knna, knmc -> knmac', inv_Edif_eta, A_bar, dH) #6
+        summ += np.einsum('knm, kmmc, knma -> knmac', inv_Edif_eta, A_bar, dH) #7
+        summ -= np.einsum('knm, knnc, knma -> knmac', inv_Edif_eta, A_bar, dH) #8
+        summ -= 1j * np.einsum('knm, knmac -> knmac', inv_Edif_eta, ddH) #9
+        summ += 1j * np.einsum('knm, kpm, knpa, kpmc, kmp, knp -> knmac', inv_Edif_eta, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #10
+        summ -= 1j * np.einsum('knm, knp, kpma, knpc, kmp, knp -> knmac', inv_Edif_eta, inv_Edif_eta, dH, dH, anti_kron, anti_kron) #11
+        summ += 1j * np.einsum('knm, knma, knmc -> knmac', inv_Edif_eta**2, dH, Delta) #12
+        summ += 1j * np.einsum('knm, knmc, knma -> knmac', inv_Edif_eta**2, dH, Delta) #13
         return summ
 
     @cached_property
@@ -655,10 +693,10 @@ class Q2_K:
 
     @cached_property
     def dA(self):
-        A_bar = self.A
-        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm
-        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_ergs * self.A_to_cm
-        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_ergs * self.A_to_cm**2
+        A_bar = self.data_K.Xbar('AA') * self.A_to_cm
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
         invEdif = self.invEdif
         E_K = self.E
 
@@ -675,12 +713,39 @@ class Q2_K:
         summ += np.einsum('knm, kmmb, knma -> knmab', invEdif, dH, dH)
         summ *= -1 * invEdif[...,None,None]
 
-        summ += np.einsum('knlb, klma -> knmab', D_H_Pval, A)
-        summ += ddA
-        summ += np.einsum('knla, klmb -> knmab', A, D_H_Pval)
+        summ += np.einsum('knlb, klma -> knmab', D_H_Pval, A_bar)
+        summ += dA_bar
+        summ += np.einsum('knla, klmb -> knmab', A_bar, D_H_Pval)
         summ += 1j * np.einsum('knla, klmb -> knmab', D_H_Pval, D_H_Pval)
         return summ
 
+    @cached_property
+    def dA_eta(self):
+        A_bar = self.data_K.Xbar('AA') * self.A_to_cm
+        dA_bar = self.data_K.Xbar('AA', 1) * self.A_to_cm**2
+        dH = self.data_K.Xbar('Ham', 1) * self.eV_to_erg * self.A_to_cm
+        ddH = self.data_K.Xbar('Ham', 2) * self.eV_to_erg * self.A_to_cm**2
+        invEdif = self.invEdif
+        E_K = self.E
+
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        dEig_inv_Pval = dEig / (dEig ** 2 + self.eta ** 2)
+        D_H_Pval = -dH * dEig_inv_Pval[:, :, :, None]
+
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3, 3), dtype=complex)
+        # U^{dagger}ddU
+        summ += ddH
+        summ -= np.einsum('klm, knla, klmb -> knmab', dEig_inv_Pval, dH, dH)
+        summ -= np.einsum('klm, knlb, klma -> knmab', dEig_inv_Pval, dH, dH)
+        summ += np.einsum('knm, kmma, knmb -> knmab', dEig_inv_Pval, dH, dH)
+        summ += np.einsum('knm, kmmb, knma -> knmab', dEig_inv_Pval, dH, dH)
+        summ *= -1 * dEig_inv_Pval[...,None,None]
+
+        summ += np.einsum('knlb, klma -> knmab', D_H_Pval, A_bar)
+        summ += dA_bar
+        summ += np.einsum('knla, klmb -> knmab', A_bar, D_H_Pval)
+        summ += 1j * np.einsum('knla, klmb -> knmab', D_H_Pval, D_H_Pval)
+        return summ
 
     @cached_property
     def gender_A_truncation(self):
