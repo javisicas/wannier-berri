@@ -23,6 +23,9 @@ class Q2_K:
         self.kron = np.array(abs(En[:, :, None] - En[:, None, :]) < self.dEnm_threshold, dtype=int)
         self.anti_kron = ( np.ones((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann)) - self.kron)
 
+    ####################################
+    # BASIC QUANTITIES 
+    ####################################
 
     @cached_property
     def levicivita(self):
@@ -35,6 +38,11 @@ class Q2_K:
     @cached_property
     def E(self):
         return self.data_K.E_K * self.eV_to_erg
+
+    @cached_property
+    def Edif(self):
+        E = self.E
+        return E[:,:,None] - E[:,None,:]
 
     @cached_property
     def dE(self):
@@ -59,19 +67,19 @@ class Q2_K:
     def invEdif(self):
         return self.data_K.dEig_inv / self.eV_to_erg
 
-    # @cached_property
-    # def S(self):
-    #     return self.data_K.Xbar('SS') * hbar/2
+    @cached_property
+    def S(self):
+        return self.data_K.Xbar('SS') * hbar/2
+
+    @cached_property
+    def A(self):
+        return self.data_K.A_H * self.A_to_cm
 
     @cached_property
     def D_eta(self):
         Edif = self.Edif # erg
         inv_Edif_eta = Edif / (Edif ** 2 + self.eta ** 2)
         return -self.data_K.Xbar('Ham', 1) * inv_Edif_eta[:, :, :, None] * eV_ergs * self.A_to_cm
-
-    @cached_property
-    def A(self):
-        return self.data_K.A_H * self.A_to_cm
 
     @cached_property
     def A_eta(self):
@@ -111,6 +119,7 @@ class Q2_K:
     @cached_property
     def mass_sum_rule(self):
         # Eq 37 - hbar**2/m delta_ij
+        # Should this get anti_kron ?
         A = self.A_eta
         V = self.velocity
         anti_kron = self.anti_kron
@@ -165,9 +174,10 @@ class Q2_K:
     @cached_property
     def berry_curvature_wang(self):
         """returns the Berry curvature as in eqn. (27) of 10.1103/PhysRevB.74.195118."""
-        Omega_bar = (self.Xbar('AA', 1) - self.Xbar('AA', 1).swapaxes(-1, -2)) * (angstrom_to_cm**2)
+        Omega_bar = (self.data_K.Xbar('AA', 1) - self.data_K.Xbar('AA', 1).swapaxes(-1, -2)) * (self.A_to_cm**2)
         D_H_Pval =  self.D_eta
         A_H_Pval = self.A_eta
+        lev = self.levicivita
 
         t2 = (-np.einsum('knla,klmb->knmab',D_H_Pval,A_H_Pval)+
               np.einsum('knlb,klma->knmab',A_H_Pval,D_H_Pval) +
@@ -176,7 +186,7 @@ class Q2_K:
               1j*np.einsum('knla,klmb->knmab',D_H_Pval,D_H_Pval) +
               1j*np.einsum('knlb,klma->knmab',D_H_Pval,D_H_Pval)
              )
-        return Omega_bar + t2
+        return np.einsum('knmab, lab -> knml', Omega_bar + t2, lev)
 
     @cached_property
     def gender2_velocity_internal(self):
@@ -302,12 +312,48 @@ class Q2_K:
         return summ
 
     @cached_property
-    def magnetic_dipole_no_ring(self):
+    def magnetic_dipole_no_ring_dA(self):
         # Eq (D2), off diag
         dE = self.dE
         A = self.A_eta
         V = self.velocity
         O = self.berry_curvature_dA
+        Edif = self.Edif
+        lev = self.levicivita
+        S = self.data_K.Xbar('SS') * hbar/2
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmpa, kpnb, lab -> knml', A, V, lev)
+        summ += -1/4 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knm, knml -> knml', Edif, O)
+        summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> knml', dE, A, lev)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> knml', S)
+        return summ
+
+    @cached_property
+    def magnetic_dipole_no_ring_truncation(self):
+        # Eq (D2), off diag
+        dE = self.dE
+        A = self.A_eta
+        V = self.velocity
+        O = self.berry_curvature_truncation
+        Edif = self.Edif
+        lev = self.levicivita
+        S = self.data_K.Xbar('SS') * hbar/2
+        
+        summ = np.zeros((self.data_K.nk, self.data_K.num_wann, self.data_K.num_wann, 3), dtype=complex)
+        summ += 1/2 * elementary_charge * 1/speed_of_light * np.einsum('kmpa, kpnb, lab -> knml', A, V, lev)
+        summ += -1/4 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knm, knml -> knml', Edif, O)
+        summ += 1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmb, kmna, lab -> knml', dE, A, lev)
+        summ += 1 * elementary_charge * 1/electron_mass * 1/speed_of_light * np.einsum('kmnl -> knml', S)
+        return summ
+
+    @cached_property
+    def magnetic_dipole_no_ring_wang(self):
+        # Eq (D2), off diag
+        dE = self.dE
+        A = self.A_eta
+        V = self.velocity
+        O = self.berry_curvature_wang
         Edif = self.Edif
         lev = self.levicivita
         S = self.data_K.Xbar('SS') * hbar/2
@@ -514,9 +560,10 @@ class Q2_K:
 ####################################################################
 
     @cached_property
-    def Edif(self):
-        E = self.E
-        return E[:,:,None] - E[:,None,:]
+    def Delta(self):
+        # this needs testing, is dE_dif the same as dvnn + dvmm
+        dE = self.dE
+        return dE[:,:,None,:] - dE[:,None,:,:]
 
     @cached_property
     def dDelta(self):
@@ -531,12 +578,6 @@ class Q2_K:
         nn -= 1j * np.einsum('knp, kpnc, knpa -> knac', anti_kron**2, D, dH) #1
         nn += np.einsum('knnac -> knac', ddH) #2
         return nn[:,:,None,:] - nn[:,None,:,:]
-
-    @cached_property
-    def Delta(self):
-        # this needs testing, is dE_dif the same as dvnn + dvmm
-        dE = self.dE
-        return dE[:,:,None,:] - dE[:,None,:,:]
 
     @cached_property
     def gender_A(self):
@@ -763,7 +804,6 @@ class Q2_K:
         summ += 1 * hbar * np.einsum('kmn, knmb, knna -> knmab', invEdif, A, V)
         summ += 1 * 1j * np.einsum('kmn, knmab -> knmab', invEdif, w)
         return summ
-
 
     @cached_property
     def gender2_A_truncation(self):

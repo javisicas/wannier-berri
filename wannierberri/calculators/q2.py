@@ -217,7 +217,8 @@ def load(data_K, external_terms, spin):
 ########################################################
 # MAGNETIC SUSCEPTIBILITY
 ########################################################
-
+# STATIC: RING
+########################################################
 
 class Mag_sus_occ_2_spin_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
@@ -445,15 +446,16 @@ class Mag_sus_occ_mass(DynamicCalculator):
     def factor_Efermi(self, E1, E2):
 	    return self.FermiDirac(E1)
 
+########################################################
+# STATIC: RING
+########################################################
 
-##########################################################################################
-
-class Mag_sus_geo_formula(Formula):
+class Mag_sus_geo_dA_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
         A = data_K.Q2.A_eta
         Edif = data_K.Q2.Edif
-        M = data_K.Q2.magnetic_dipole_no_ring
+        M = data_K.Q2.magnetic_dipole_no_ring_dA
         O = data_K.Q2.berry_curvature_dA
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
@@ -469,11 +471,11 @@ class Mag_sus_geo_formula(Formula):
         return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
 
 
-class Mag_sus_geo(DynamicCalculator):
+class Mag_sus_geo_dA(DynamicCalculator):
     def __init__(self, spin=True, **kwargs):
         super().__init__(**kwargs)
         self.kwargs_formula.update(dict(spin=spin))
-        self.Formula = Mag_sus_geo_formula
+        self.Formula = Mag_sus_geo_dA_formula
         self.constant_factor =  factors.factor_cell_volume_to_m
         self.transformTR = transform_ident
         self.transformInv = transform_ident
@@ -486,10 +488,85 @@ class Mag_sus_geo(DynamicCalculator):
 	    return self.FermiDirac(E1)
 
 
+class Mag_sus_geo_truncation_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.Q2.A_eta
+        Edif = data_K.Q2.Edif
+        M = data_K.Q2.magnetic_dipole_no_ring_truncation
+        O = data_K.Q2.berry_curvature_truncation
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += -1/8 * elementary_charge**2 * hbar**(-2) * speed_of_light**(-2) * np.einsum('knm, knmi, kmnl -> knmil', Edif, O, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knmi, kmnl -> knmil', M, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmnl, knmi -> knmil', M, O)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_geo_truncation(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_geo_truncation_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
+
+class Mag_sus_geo_wang_formula(Formula):
+    def __init__(self, data_K, spin=True, **parameters):
+        super().__init__(data_K, **parameters)
+        A = data_K.Q2.A_eta
+        Edif = data_K.Q2.Edif
+        M = data_K.Q2.magnetic_dipole_no_ring_wang
+        O = data_K.Q2.berry_curvature_wang
+
+        summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
+        summ += -1/8 * elementary_charge**2 * hbar**(-2) * speed_of_light**(-2) * np.einsum('knm, knmi, kmnl -> knmil', Edif, O, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('knmi, kmnl -> knmil', M, O)
+        summ += -1/2 * elementary_charge * 1/hbar * 1/speed_of_light * np.einsum('kmnl, knmi -> knmil', M, O)
+
+        self.Imn = np.real(summ)
+        self.ndim = 2
+
+    def trace_ln(self, ik, inn1, inn2):
+        inn3 = np.concatenate((inn1, inn2))
+        return self.Imn[ik, inn3].sum(axis=0)[inn3].sum(axis=0)
+
+
+class Mag_sus_geo_wang(DynamicCalculator):
+    def __init__(self, spin=True, **kwargs):
+        super().__init__(**kwargs)
+        self.kwargs_formula.update(dict(spin=spin))
+        self.Formula = Mag_sus_geo_wang_formula
+        self.constant_factor =  factors.factor_cell_volume_to_m
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+        self.sign = 1
+
+    def factor_omega(self, E1, E2):
+        return omega_part_5(self.omega, self.smr_fixed_width, E1, E2, self.sign)
+
+    def factor_Efermi(self, E1, E2):
+	    return self.FermiDirac(E1)
+
 class Mag_sus_VV_formula(Formula):
     def __init__(self, data_K, spin=True, **parameters):
         super().__init__(data_K, **parameters)
-        M = data_K.Q2.magnetic_dipole_no_ring
+        M = data_K.Q2.magnetic_dipole_no_ring_wang
         invEdif = data_K.Q2.invEdif
 
         summ = np.zeros((data_K.nk, data_K.num_wann, data_K.num_wann, 3, 3), dtype=complex)
