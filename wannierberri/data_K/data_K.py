@@ -115,11 +115,13 @@ class Data_K(System, abc.ABC):
                  random_gauge=False,
                  degen_thresh_random_gauge=1e-4,
                  eta=0.04,
-                 threshold=1e-3
+                 threshold=1e-3,
+                 external=True 
                  ):
 
         self.eta = eta
         self.threshold = threshold
+        self.external = external
         
         self.system = system
         self.Emin = Emin
@@ -354,7 +356,7 @@ class Data_K(System, abc.ABC):
     def A_H(self):
         '''Generalized Berry connection matrix, A^(H) as defined in eqn. (25) of 10.1103/PhysRevB.74.195118.'''
         return (self.Xbar('AA') + 1j * self.D_H)
-    
+
     @property
     def A_H_internal(self):
         '''Generalized Berry connection matrix, A^(H) as defined in eqn. (25) of 10.1103/PhysRevB.74.195118. only internal term'''
@@ -378,6 +380,17 @@ class Data_K(System, abc.ABC):
 
     def __enter__(self):
         return self
+
+    @cached_property
+    def A_H_eta(self):
+        '''Generalized Berry connection matrix, A^(H) as defined in eqn. (25) of 10.1103/PhysRevB.74.195118.'''
+        sc_eta = 0.04
+        E_K = self.E_K
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        dEig_inv_Pval = dEig / (dEig ** 2 + sc_eta ** 2)
+        V_H = self.Xbar('Ham', 1)
+        Dhp= -V_H * dEig_inv_Pval[:, :, :, None]
+        return (self.Xbar('AA') + 1j *Dhp)
 
 #########################################################################################################################################
     @cached_property
@@ -407,7 +420,7 @@ class Data_K(System, abc.ABC):
     def A_H_P(self):
         '''Generalized Berry connection matrix'''
         D_H_Pval = self.D_H_P
-        return self.A_H*angstrom_to_cm #self.Xbar('AA') + 1j * D_H_Pval
+        return self.A_H_eta * angstrom_to_cm #self.Xbar('AA') + 1j * D_H_Pval
         
     @cached_property
     def velocity(self):
@@ -547,6 +560,7 @@ class Data_K(System, abc.ABC):
         return summ
 
 
+
     @cached_property
     def berry_curvature_Javi(self):
         gender_A = self.gender_A_H
@@ -570,7 +584,57 @@ class Data_K(System, abc.ABC):
 
         Omega = np.einsum('knmba, iab -> knmi',t4,eps)
         return Omega
-    
+        
+    @cached_property
+    def Udagger_dba_U(self):
+        inv_Edif = self.dEig_inv/eV_ergs
+        dH = self.Xbar('Ham', 1) * eV_ergs * angstrom_to_cm   # H_a^(W)
+        ddH = self.Xbar('Ham', 2) * eV_ergs * (angstrom_to_cm**2)  # H_ab^(W)
+
+        delta = np.eye(self.num_wann)[None, :, :] 
+
+        offdiag = ddH
+        offdiag -= np.einsum('klm,knla,klmb->knmab', inv_Edif, dH,dH)
+        offdiag += np.einsum('kmm,knma,kmmb->knmab', inv_Edif, dH,dH)
+        offdiag -= np.einsum('klm,knlb,klma->knmab', inv_Edif, dH,dH)
+        offdiag += np.einsum('kmm,knmb,kmma->knmab', inv_Edif, dH,dH)
+        offdiag += np.einsum('knm,kmma,knmb->knmab', inv_Edif, dH,dH)
+        offdiag += np.einsum('knm,kmmb,knma->knmab', inv_Edif, dH,dH)
+        offdiag *= -inv_Edif[:,:,:,None,None]
+
+        diag = np.einsum('klm,klm,knlb,klma->knmab', inv_Edif, inv_Edif, dH,dH)
+        diag -= np.einsum('kmm,kmm,knmb,kmma->knmab', inv_Edif, inv_Edif, dH,dH)
+        diag += np.einsum('klm,klm,knla,klmb->knmab', inv_Edif, inv_Edif, dH,dH)
+        diag -= np.einsum('kmm,kmm,knma,kmmb->knmab', inv_Edif, inv_Edif, dH,dH)
+        diag *= -1/2
+
+        result = offdiag * (1 - delta[:, :, :, None, None]) + diag*(delta[:, :, :, None, None])
+
+        return result
+
+    @cached_property
+    def dA_mat(self):
+        D_H_Pval =  self.D_H_P
+        A_bar = self.Xbar('AA')*angstrom_to_cm
+        dA_bar = self.Xbar('AA', 1)*(angstrom_to_cm**2)
+        der_A = -np.einsum('knlb, klma -> knmab', D_H_Pval, A_bar)
+        der_A += dA_bar
+        der_A += np.einsum('knla, klmb -> knmab', A_bar, D_H_Pval)
+        der_A -= 1j*np.einsum('knlb, klma -> knmab', D_H_Pval, D_H_Pval)
+        der_A += 1j*self.Udagger_dba_U
+
+        # np.save('dA_mat.npy', der_A)
+        # np.save('UddU_mat.npy', self.Udagger_dba_U)
+        return der_A
+
+    @cached_property
+    def BerryCurvature_perturbation(self):
+        eps = self.levi_civita
+        der_A = self.dA_mat
+        # np.save('dA_mat.npy', der_A)
+        # np.save('UddU_mat.npy', self.Udagger_dba_U)
+        return np.einsum('knmba, lab -> knml', der_A, eps)
+
     @cached_property
     def Octopole(self):
         A_H_Pval = self.A_H_P

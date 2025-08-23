@@ -485,6 +485,40 @@ class MagneticSusceptibilityGeo(DynamicCalculator):
         omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
         return omega
 
+class MagneticSusceptibilityGeoPerturbationFormula(Formula):
+    def __init__(self, data_K, sc_eta, **parameters):
+        super().__init__(data_K, **parameters)
+        E_K = data_K.E_K*eV_ergs
+        dEig = E_K[:, :, None] - E_K[:, None, :]
+        eps = data_K.levi_civita
+        BerryC = data_K.BerryCurvature_perturbation#np.einsum('abi,knmab->knmi',eps,Omega) 
+        Mag = data_K.Magnetization
+        
+        t = np.real(np.einsum('knmi,kmnl->knmil',BerryC,Mag) + e/(8*hbar*c_light)*np.einsum('knmi,knm,kmnl->knmil',BerryC,dEig,BerryC) +np.einsum('knmi,kmnl->knmil',Mag,BerryC) +  e/(8*hbar*c_light)*np.einsum('knm,knmi,kmnl->knmil',dEig,BerryC,BerryC))
+        self.Geonm = -e/(2*hbar*c_light)*t#/((2*np.pi)**3)
+        self.ndim = 2
+        self.transformTR = transform_ident
+        self.transformInv = transform_ident
+
+    def trace_ln(self, ik, inn1, inn2):
+        idx = np.concatenate((inn1, inn2))
+        return self.Geonm[ik, idx].sum(axis=0)[idx].sum(axis=0)
+    
+
+class MagneticSusceptibilityGeoPerturbation(DynamicCalculator):
+    def __init__(self, sc_eta, **kwargs):
+        super().__init__(dtype=float, **kwargs)
+        self.kwargs_formula.update(dict(sc_eta=sc_eta))
+        self.Formula = MagneticSusceptibilityGeoPerturbationFormula
+        self.constant_factor =  1/(angstrom_to_cm**3)
+
+    def factor_Efermi(self, E1, E2):
+        return self.FermiDirac(E1)
+        
+    def factor_omega(self, E1, E2):
+        omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
+        return omega
+
 ###############################################
 class MagneticSusceptibilityInterRingFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
@@ -502,7 +536,6 @@ class MagneticSusceptibilityInterRingFormula(Formula):
     def trace_ln(self, ik, inn1, inn2):
         idx = np.concatenate((inn1, inn2))
         return self.InterRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0)  
-
 
 class MagneticSusceptibilityInterRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
@@ -540,7 +573,6 @@ class MagneticSusceptibilityOccRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.OccRingnm[ik, idx].sum(axis=0)[idx].sum(axis=0) 
 
-
 class MagneticSusceptibilityOccRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
         super().__init__(dtype=float, **kwargs)
@@ -555,6 +587,7 @@ class MagneticSusceptibilityOccRing(DynamicCalculator):
         omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
         return omega
     
+
 
 class MagneticSusceptibilityOcc2OrbRingFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
@@ -609,7 +642,6 @@ class MagneticSusceptibilityOcc2SpinRingFormula(Formula):
         idx = np.concatenate((inn1, inn2))
         return self.OccRing2Spinnm[ik, idx].sum(axis=0)[idx].sum(axis=0)
     
-
 class MagneticSusceptibilityOcc2SpinRing(DynamicCalculator):
     def __init__(self, sc_eta, **kwargs):
         super().__init__(dtype=float, **kwargs)
@@ -624,7 +656,6 @@ class MagneticSusceptibilityOcc2SpinRing(DynamicCalculator):
         omega = np.ones(self.omega.shape)  # argument of delta function [iw, n, m]
         return omega
     
-
 
 class PiTensorFormula(Formula):
     def __init__(self, data_K, sc_eta, **parameters):
